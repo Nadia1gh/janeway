@@ -1,0 +1,258 @@
+{% extends "admin/core/base.html" %}}
+{% load foundation static bool_fa securitytags %}
+
+{% block title %}Edit Metadata - {{ article.pk }}{% endblock title %}
+
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li>Edit</li>
+    <li>{{ article.safe_title }}</li>
+    <li>Metadata</li>
+{% endblock breadcrumbs %}
+{% block head %}
+    {{ block.super }}
+    {{ info_form.media }}
+{% endblock %}
+
+{% block body %}
+    {% can_see_pii_tag article as can_see_pii %}
+    <div class="large-12 columns box">
+        <div class="row expanded">
+            <form method="POST"{% if journal_settings.general.abstract_required %} novalidate{% endif %}>
+                <div class="title-area">
+                    <h2 id="edit-metadata">Edit Metadata</h2>
+                    <a class="button" href="{{ return }}"><i class="fa fa-arrow-left"></i>Back</a>
+                </div>
+                <div class="content">
+                    {% include "elements/translations/form_tabs.html" with object=article %}
+                    {% include "elements/forms/errors.html" with form=info_form %}
+                    {% csrf_token %}
+                    <div class="row expanded">
+                        <div class="large-12 columns">
+                            {{ info_form.title|foundation }}
+                        </div>
+                        <div class="large-12 columns end">
+                            {{ info_form.abstract|foundation }}
+                        </div>
+                        {% if journal_settings.general.submission_summary %}
+                        <div class="large-12 columns end">
+                            {{ info_form.non_specialist_summary|foundation }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="row expanded">
+                        <div class="large-3 columns">
+                            {{ info_form.language|foundation }}
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.section|foundation }}
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.license|foundation }}
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.article_number|foundation }}
+                        </div>
+                    </div>
+                    <div class="row expanded">
+                        <div class="large-3 columns">
+                            {{ info_form.first_page|foundation }}
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.last_page|foundation }}
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.page_numbers|foundation }}
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.total_pages|foundation }}
+                        </div>
+                    </div>
+                    <div class="row expanded">
+                        <div class="large-3 columns">
+                            <div class="large-12 columns">
+                                <label>{{ info_form.peer_reviewed.label }}</label>
+                                {{ info_form.peer_reviewed }} Check if this article is reviewed
+                            </div>
+                        </div>
+                        <div class="large-3 columns">
+                            <div class="large-12 columns">
+                                <label>{{ info_form.is_remote.label }}</label>
+                                {{ info_form.is_remote }} {{ info_form.is_remote.field.help_text }}
+                            </div>
+                        </div>
+                        <div class="large-3 columns">
+                            {{ info_form.remote_url|foundation }}
+                        </div>
+                        <div class="large-3 columns end">
+                            {{ info_form.primary_issue|foundation }}
+                        </div>
+                    </div>
+                    <div class="row expanded">
+                       <div class="large-9 columns">
+                        <div class="row expanded">
+                         <div class="large-12 columns">
+                          <label for="id_keywords">Keywords</label>
+                          <input type="text" id="id_keywords" name="keywords" value="
+
+
+                                  {% if info_form.cleaned_data.keywords %}{{ info_form.cleaned_data.keywords }}{% else %}{% for keyword in article.keywords.all %}{{ keyword.word }}{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}"/>
+                          <p class="help-text">Hit Enter to add a new keyword.</p>
+                        </div>
+                       </div>
+                      </div>
+                      <div class="large-3 columns end">
+                              {{ info_form.jats_article_type_override|foundation }}
+                      </div>
+                    </div>
+                    {% if request.journal.submissionconfiguration.competing_interests %}
+                        <div class="large-10 columns">
+                            {{ info_form.competing_interests|foundation }}
+                        </div>
+                    {% endif %}
+                    <div class="large-10 columns">
+                        {{ info_form.custom_how_to_cite|foundation }}
+                    </div>
+                    <div class="large-10 columns">
+                        {{ info_form.rights|foundation }}
+                    </div>
+                    {% include "admin/elements/submission/additional_fields.html" with form=info_form additional_fields=additional_fields %}
+
+                    <div class="large-12 columns">
+                        <button type="submit" name="metadata" class="small success button">Update Metadata</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        {% include "elements/author_summary_table.html" %}
+        <div class="title-area">
+             <h2 id="edit-metadata-funding">Funding</h2>
+        </div>
+        <div class="content submission-content">
+            <div class="row expanded">
+                <form method="GET" id="search_funder">
+                    <p>
+                        {% blocktrans %}
+                            You can search the <a href="https://www.crossref.org/services/funder-registry/">
+                            Crossref Funder Registry</a> to add known funders.
+                        {% endblocktrans %}
+                    </p>
+                    <div class="large-8 columns">
+                        <input
+                            type="text"
+                            name="funder_text"
+                            id="funder_text"
+                            onkeypress="javascript:onFunderTextEnterPress(event);"
+                        />
+                    </div>
+                    <div class="large-2 columns">
+                        <button type="button"
+                            class="button pull-right"
+                            onclick="javascript:search_fundref($('#funder_text').val())"
+                        >Search for funder</button>
+                    </div>
+                    <div class="large-2 columns">
+                        <input id="funder_name" type="hidden" value="use_raw"/>
+                        <input id="funder_doi" type="hidden" value=""/>
+                        <button
+                            type="button"
+                            class="warning button pull-right"
+                            data-open="add_funder"
+                        ><i class="fa fa-plus">&nbsp;</i>Add funder manually</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="row expanded">
+            <div class="large-12 columns">
+                <span name="funder_list" id="funder_list"></span>
+            </div>
+        </div>
+
+        <div class="title-area">
+            <h2 id="edit-metadata-current-funders">Current Funders</h2>
+        </div>
+
+        <div class="row expanded">
+            <div class="large-12 columns">
+                <table class="scroll">
+                    <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>FundRef ID</th>
+                        <th>Grant Number</th>
+                        <th>{% trans "Funding Statement" %}</th>
+                        <th>Edit</th>
+                        <th>Delete</th>
+                    </tr>
+                    </thead>
+                    <tbody id="sortable">
+                    {% for funder in article.funders.all %}
+                        <tr id="funder-{{ funder.pk }}">
+                            <td>{{ funder.name|default_if_none:"" }}</td>
+                            <td>{{ funder.fundref_id|default_if_none:"" }}</td>
+                            <td>{{ funder.funding_id|default_if_none:"" }}</td>
+                            <td>{{ funder.funding_statement|safe }}</td>
+                            <td>
+                                <a href="{% url 'edit_funder' article.pk funder.pk %}?return={{ request.path|urlencode }}">
+                                    <span class="fa fa-edit" aria-hidden="true">&nbsp;</span>Edit
+                                </a>
+                            </td>
+                            <td>
+                                <a href="{% url 'delete_funder' article.pk funder.pk %}?return={{ request.path|urlencode }}">
+                                    <span class="fa fa-trash" aria-hidden="true">&nbsp;</span>Delete
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="2">No funders added.</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+
+        <div class="small reveal" id="add_funder" data-reveal>
+            <div class="card">
+                <div class="card-divider">
+                    <h5>Add funder</h5>
+                </div>
+                <div class="card-section">
+                    <form method="POST">
+                        {% csrf_token %}
+                        {{ funder_form|foundation }}
+                        <button type="submit" name="add_funder" class="success button">Add funder</button>
+                        <button type="button" data-close="" class="close-button">&times;</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock body %}
+
+
+{% block js %}
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+    <script type="text/javascript" src="{% static "common/js/jq-ui.min.js" %}"></script>
+    <script src="{% static "common/js/tagit.js" %}"></script>
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $("#id_keywords").tagit(
+                {allowSpaces: true});
+        });
+    </script>
+    <script src="{% static "admin/js/csrf.js" %}"></script>
+    <script>
+        function onFunderTextEnterPress(event) {
+            var code = event.keyCode || event.which;
+            if(code == 13) {
+                event.preventDefault();
+                search_fundref($('#funder_text').val());
+            }
+        }
+    </script>
+    {% include 'admin/elements/fundref/fundref.html' %}
+{% endblock js %}

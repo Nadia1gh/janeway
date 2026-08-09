@@ -1,0 +1,83 @@
+{% extends "admin/core/base.html" %}
+{% load bootstrap4 %}
+
+
+{% block title %}Setting : {{ setting.pretty_name }}{% endblock title %}
+{% block title-section %}Edit Setting{% endblock %}
+{% block title-sub %}{{ setting.pretty_name }}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    {% if request.GET.email_template %}
+        <li><a href="{% url 'core_email_templates' %}">Email Templates</a></li>
+    {% else %}
+        {% if request.journal %}
+            <li><a href="{% url 'core_settings_index' %}">Settings</a></li>
+        {% else %}
+            <li><a href="{% url 'core_default_settings_index' %}">Settings</a></li>
+        {% endif %}
+    {% endif %}
+    <li>Edit {{ setting.pretty_name }}</li>
+{% endblock %}
+
+{% block body %}
+    <section>
+        <div class="row expanded">
+            <div class="large-12 columns">
+                <div class="box">
+                    <div class="title-area">
+                        <h2>Edit {{ setting.pretty_name }} ({{ setting.name }})</h2>
+                    </div>
+                    <div class="content">
+                        {% if setting.is_translatable %}
+                            {% include "admin/elements/translations/form_tabs.html" with object=setting %}
+                        {% endif %}
+                        {% if setting_value == None or setting_value != setting.default_setting_value %}
+                            <div class="card">
+                                {% include "elements/core/default_setting_card.html" %}
+                            </div>
+                        {% else %}
+                            <h5><i class="fa fa-info-circle"></i>You are editing the default value for this setting.
+                                Journals with a specific journal override will not use this value.</h5>
+                        {% endif %}
+                        </h5>
+                        {% if setting.description %}<label for="id_value">{{ setting.description|safe }}</label>{% endif %}
+
+                        {% include "elements/forms/errors.html" with form=edit_form %}
+
+                        <form action="" method="POST" enctype="multipart/form-data">
+
+                            {% csrf_token %}
+
+                            {% if setting.types == 'date' %}Date Format: dd/mm/yyyy<br/>{% endif %}
+                            {% if setting.types == 'rich_text' %}
+                                {{ edit_form.as_p }}
+                            {% else %}
+                                {% bootstrap_form edit_form layout='inline' %}
+                                {% if setting.types == 'file' %}
+                                    <a href="{% url 'journal_file' value %}">Download File</a>
+                                {% endif %}
+                            {% endif %}
+
+                                <button type="submit" class="button success" style="margin-right:5px">
+                                    <span class="fa fa-check"> </span> {% if setting_value == None %} Create Override {% else %}
+                                    Submit {% endif %}
+                                </button>
+                                {% if setting_value != setting.default_setting_value and setting_value != None %}
+                                    <button type="submit" class="button alert float-right"
+                                            onclick="return confirm_function()"
+                                            name="delete" value="delete">
+                                        Reset to Default
+                                    </button>
+                                {% endif %}
+
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+        </div>
+    </section>
+{% endblock body %}

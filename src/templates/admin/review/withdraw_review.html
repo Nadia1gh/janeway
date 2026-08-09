@@ -1,0 +1,43 @@
+{% extends "admin/core/base.html" %}
+{% load settings %}
+
+{% block title %}Withdraw Review Request{% endblock title %}
+{% block title-section %}Withdraw Review Request{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub_pii.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/review_base.html" with subpage="yes" %}
+    <li>Withdraw Review Request</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+
+    <div class="large-12 columns">
+        <div class="box">
+            <div class="content">
+                <p>You are withdrawing a review by {{ review.reviewer.full_name }} from {{ article.safe_title }}. It was due
+                    on {{ review.date_due }}.</p>
+                <p>If you select Skip, the reviewer will not be notified.</p>
+
+                <div class="card">
+                    <div class="card-divider">
+                        <h4>To {{ review.reviewer.full_name }}</h4>
+                        <h5>From {{ request.user.full_name }}</h5>
+                    </div>
+                    {% url 'review_in_review' article.pk  as cancel_url %}
+                    {% include 'admin/elements/email_form.html' with form=form skip=1 cancel_url=cancel_url %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+{% endblock body %}
+
+{% block js %}
+    {{ block.super}}
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+    {{ form.media.js }}
+
+{% endblock js %}

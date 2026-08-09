@@ -1,0 +1,263 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+
+{% block title %}Editor Review Copyedit{% endblock %}
+{% block title-section %}Review Copyedit Assignment #{{ copyedit.id }} by
+    {{ copyedit.copyeditor.full_name }}{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/copyediting_base.html" with subpage="yes" %}
+    <li>Review Copyediting</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+
+    <div class="large-8 columns">
+        <div class="box">
+            <div class="title-area">
+                <h2>Article Files</h2>
+            </div>
+            <div class="content">
+                <p>Files you sent the copyeditor to complete their task.</p>
+                <table class="scroll small">
+                    <tr>
+                        <th>Label</th>
+                        <th>Filename</th>
+                        <th>Download</th>
+                    </tr>
+                    {% for file in copyedit.files_for_copyediting.all %}
+                        <tr>
+                            <td>{{ file.label }}</td>
+                            <td>{{ file.original_filename }}</td>
+                            <td><a href="{% url 'editor_file_download' article.pk file.pk %}"><i class="fa fa-download">&nbsp;</i></a></td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            <div class="title-area">
+                <h2>Copyedited Files</h2>
+            </div>
+            <div class="content">
+                <p>Files the copyeditor has uploaded.</p>
+                <table class="scroll small">
+                    <tr>
+                        <th>Label</th>
+                        <th>Filename</th>
+                        <th>Download</th>
+                    </tr>
+                    {% for file in copyedit.copyeditor_files.all %}
+                        <tr>
+                            <td>{{ file.label }}</td>
+                            <td>{{ file.original_filename }}</td>
+                            <td><a href="{% url 'editor_file_download' article.pk file.pk %}"><i class="fa fa-download">&nbsp;</i></a></td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="3">There are no copyedited files. Upload one.</td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            <div class="title-area">
+                <h2>Note from the Copyeditor</h2>
+            </div>
+            <div class="content">
+                {{ copyedit.copyeditor_note|safe }}
+            </div>
+        </div>
+
+        <div class="box">
+            {% if copyedit.author_reviews %}
+                <div class="title-area">
+                    <h2>Author Reviews</h2>
+                </div>
+                <div class="content">
+                    {% for review in copyedit.author_reviews %}
+                        <table class="scroll">
+                            <tr>
+                                <th>Requested</th>
+                                <th>Notified</th>
+                                <th>Decision</th>
+                                <th>Decision Date</th>
+                                <th></th>
+                                {% if request.user.is_admin %}<th></th>{% endif %}
+                            </tr>
+
+                            <tr>
+                                <td>{{ review.assigned|date:"Y-m-d" }}</td>
+                                <td>
+                                    <i class="fa {% if review.notified %}fa-check-circle-o{% else %}fa-times-circle-o{% endif %}"></i>
+                                            {% if not review.notified %}<a href="{% url 'request_author_copyedit' article.pk copyedit.pk review.pk %}"> <i class="fa fa-send-o"> </i> Send Notification</a>{% endif %}
+                                </td>
+                                <td>{% if review.decision %} {{ review.get_decision_display }} {% else %}Awaiting
+                                    response{% endif %}</td>
+                                <td>{% if review.date_decided %} {{ review.date_decided|date:"Y-m-d" }} {% else %}
+                                    --{% endif %}</td>
+                                <td>
+                                    {% if review.decision %}
+                                        <small>Cannot delete a completed author review.</small>
+                                    {% else %}
+                                        <a href="{% url 'delete_author_review' article.id copyedit.id review.pk %}" class="small alert button delete">Delete Author Review</a>
+                                    {% endif %}
+                                </td>
+                                {% if request.user.is_admin %}<td><a class="" target="_blank" href="{% url 'admin:copyediting_authorreview_change' review.pk %}"><span class="fa fa-cogs">&nbsp;</span>Edit in Admin</a></td>{% endif %}
+                            </tr>
+                        </table>
+                        <table class="scroll small">
+                            <tr>
+                                <th>Label</th>
+                                <th>Filename</th>
+                                <th>Download</th>
+                                <th>Replaced</th>
+                            </tr>
+                            {% for file in copyedit.copyeditor_files.all %}
+                                <tr>
+                                    <td>{{ file.label }}</td>
+                                    <td>{{ file.original_filename }}</td>
+                                    <td><a href="?file_id={{ file.id }}"><i class="fa fa-download">&nbsp;</i></a></td>
+                                    <td>{% if file in review.files_updated.all %}Author Version{% else %}Copyeditor
+                                        Version{% endif %}</td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="4">There are no copyedited files. Upload one.</td>
+                                </tr>
+                            {% endfor %}
+                        </table>
+                        <div class="title-area">
+                            <h2>Covering Letter from Author</h2>
+                        </div>
+                        {{ review.author_note|safe }}
+                        {% if not forloop.last %}
+                        <hr />
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="large-4 columns">
+        <div class="box">
+            <div class="title-area">
+                <h2>Actions</h2>
+            </div>
+
+            <div class="content">
+                {% if copyedit.actions_available %}
+                    <ul class="menu vertical actions">
+                        <li><a href="#" data-open="accept-modal"><i class="fa fa-check-circle action-icon">&nbsp;</i>Accept Copyedit</a></li>
+                        <li>
+                            <form id="copyediting_author_review_assignment" method="POST">
+                            {% csrf_token %}
+                                <button name="{{ author_review_form.CONFIRMABLE_BUTTON_NAME }}" type="submit" class="expanded">
+                                    <i class="fa fa-envelope-o">&nbsp;</i>Request Author Review
+                                </button>
+                            </form>
+                        </li>
+                        <li><a href="#" data-open="reset-modal"><i class="fa fa-inbox action-icon">&nbsp;</i>Reopen this Copyedit Task</a></li>
+                    </ul>
+                {% else %}
+                    <div class="bs-callout bs-callout-primary">
+                        <small>Actions are not currently available because {% if not copyedit.copyeditor_completed %}the
+                            initial
+                            copyedit is still underway.{% elif copyedit.copyedit_accepted %} this copyedit assignmenthas
+                            been accepted.
+                        {% elif copyedit.copyedit_reopened and not copyedit.copyedit_reopened_complete %}the copyedithas
+                            been
+                            reopened has not been completed.{% elif copyedit.incomplete_author_reviews %}there are
+                            incomplete author reviews.{% endif %}</small>
+                    </div>
+                {% endif %}
+                <p>
+                    <small>Accepting this copyedit will allow you to move this article into the next stage of
+                        production. Requesting author review will allow for another round of copyediting with feedback
+                        from the
+                        author. Reopening this task will send it back to the copyeditor, asking them to undertake
+                        further
+                        edits (this should be used if an Author Review turns up "Corrections Required").
+                    </small>
+                </p>
+            </div>
+        </div>
+
+        <div class="box">
+            <div class="title-area">
+                <h2>Log</h2>
+            </div>
+            <div class="content">
+                <p>
+                    {% if copyedit.decision or copyedit.copyedit_reopened %}
+                        {% for item in copyedit.copyedit_log %}
+                            {% if item.date %}
+                                {{ item.date }} {{ item.event }}<br/>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        Awaiting response
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="reveal" id="accept-modal" data-reveal data-animation-in="slide-in-up"
+         data-animation-out="slide-out-down">
+        <div class="card">
+            <div class="card-divider">
+                <h4><i class="fa fa-check-circle">&nbsp;</i>Accept Copyedit</h4>
+            </div>
+            <div class="card-section">
+                <p>You can write a note to the copyeditor thanking them for their time.</p>
+                <form method="POST">
+                    {% csrf_token %}
+                    <textarea name="accept_note">{{ accept_message|safe|linebreaksbr }}</textarea>
+                    <button name="accept" type="submit" class="button success"><i class="fa fa-envelope-o">&nbsp;</i>Send
+                    </button>
+                </form>
+            </div>
+        </div>
+        <button class="close-button" data-close aria-label="Close modal" type="button">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+
+    <div class="reveal" id="reset-modal" data-reveal data-animation-in="slide-in-up"
+         data-animation-out="slide-out-down">
+        <div class="card">
+            <div class="card-divider">
+                <h4><i class="fa fa-inbox">&nbsp;</i>Reopen Copyedit</h4>
+            </div>
+            <div class="card-section">
+                <p>If you wish to reopen the copyedit task without an author review, you can do so by adding a note
+                    below, which will be sent to the copyeditor.</p>
+                <form method="POST">
+                    {% csrf_token %}
+                    <textarea name="reset_note">{{ reopen_message|safe|linebreaksbr }}</textarea>
+                    <label for="due">Due Date</label>
+                    <input type="date" name="due" id="due" required="required">
+                    <button name="review" type="submit" class="button success"><i class="fa fa-envelope-o">&nbsp;</i>Send
+                    </button>
+                </form>
+            </div>
+        </div>
+        <button class="close-button" data-close aria-label="Close modal" type="button">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+
+    {% if author_review_form.modal %}
+        {% include "admin/elements/confirm_modal.html" with modal=author_review_form.modal form_id="copyediting_author_review_assignment" %}
+    {% endif %}
+
+{% endblock body %}
+
+{% block js %}
+    {% if author_review_form.modal %}
+        {% include "admin/elements/open_modal.html" with target=author_review_form.modal.id %}
+    {% endif %}
+    {% include "elements/jqte.html" %}
+{% endblock js %}

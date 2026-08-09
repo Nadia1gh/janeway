@@ -1,0 +1,38 @@
+{% load tz %}
+<div class="reveal" id="accept_preprint" data-reveal data-animation-in="slide-in-up"
+     data-animation-out="slide-out-down">
+    <div class="card">
+        <div class="card-divider">
+            <h4>
+                {% if not preprint.date_published %}
+                <i class="fa fa-check-circle">&nbsp;</i>Accept {{ request.repository.object_name }}
+                {% else %}
+                <i class="fa fa-edit"> </i> Edit Published Date
+                {% endif %}
+            </h4>
+        </div>
+    </div>
+    <div class="card-section">
+        <button class="close-button" data-close aria-label="Close modal" type="button">
+            <span aria-hidden="true">&times;</span>
+        </button>
+
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="row">
+                <div class="large-12 columns">
+                    <label for="datetime">Publication date and time</label>
+                    <input type="datetime-local" name="datetime" id="datetime" required value="{% if preprint.date_published %}{{ preprint.date_published|date:'Y-m-d\TH:i' }}{% else %}{% now 'Y-m-d\TH:i' %}{% endif %}">
+                    {% get_current_timezone as TIME_ZONE %}
+                    <input type="hidden" id="timezone" name="timezone" value="{{ TIME_ZONE }}" />
+                    <p class="help-text">Your Janeway timezone is set to <strong>{{ TIME_ZONE }}</strong>.
+                    {% if not request.user.preferred_timezone %}You can set your preferred timezone in your <a href="{% url 'core_edit_profile' %}">profile</a>.{% endif %}</p>
+                </div>
+                        <div class="large-12 columns">
+                            <button type="submit" name="accept" class="small success button">Save</button>
+                        </div>
+                    </div>
+            <small></small>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,31 @@
+{% load foundation %}
+
+<div class="reveal small" id="pubdate" data-reveal data-animation-in="slide-in-up"
+     data-animation-out="slide-out-down">
+    <div class="card">
+        <div class="card-divider">
+            <h4><i class="fa fa-folder-open-o">&nbsp;</i>Set Publication Date/Time</h4>
+        </div>
+        <div class="card-section">
+            <h5>Publication Date/Time</h5>
+            <p>You can set the publication date and time here so that even when an article is marked as published, users will not
+            be able to view it until the date/time has past.</p>
+            {% if request.timezone %}
+                <p><span class="fa fa-info primary"></span> You are working under the {{ request.timezone.zone }} timezone.</p>
+                {% if not request.user.preferred_timezone %}
+                <p> This is based on the locale settings provided by your browser</p>
+                {% endif %}
+                <p>You can select or unset your preferred timezone from the <a target="_blank" href="{% url 'core_edit_profile'%}">Edit Profile</a> page.</p>
+            {% endif %}
+            <form method="POST">
+                {% csrf_token %}
+                {% include "admin/core/widgets/soon_date_buttons.html" with date_input_id=pub_date_form.date_published.id_for_label input_type="datetime-local" %}
+                {{ pub_date_form|foundation }}
+                <button type="submit" name="pubdate" class="small success button">Set Publication Date</button>
+            </form>
+            <button class="close-button" data-close aria-label="Close reveal" type="button">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    </div>
+</div>

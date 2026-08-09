@@ -1,0 +1,32 @@
+{% extends "core/base.html" %}
+{% comment %}
+  This template is deprecated. Account pages are now part of the back-office.
+{% endcomment %}
+
+{% load i18n bootstrap4 %}
+
+{% block title %}{% trans "Reset Password" %}{% endblock title %}
+
+{% block body %}
+    <div class="row">
+        <div class="col-md-6 offset-md-3">
+            <div class="card">
+                <div class="card-block">
+                    <div class="col-md-12">
+                        {% include "elements/forms/errors.html" with form=form %}
+                        <form method="POST">
+                            {% csrf_token %}
+                            <div class="form-group">
+                                {% trans "Enter your email address to begin the reset process" %}
+                                {% bootstrap_form form %}
+                                <br/>
+                                <button type="submit"
+                                        class="btn btn-primary btn-block">{% trans "Request Token" %}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock body %}

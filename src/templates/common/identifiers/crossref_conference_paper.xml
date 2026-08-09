@@ -1,0 +1,51 @@
+{% spaceless %}<conference_paper publication_type="full_text">{% endspaceless %}
+
+            {% include "common/identifiers/crossref_contributors.xml" %}
+
+            <titles>
+                <title>{{ article.title }}</title>
+            </titles>
+
+            {% if article.date_published %}
+            <publication_date media_type="online">
+                <month>{{ article.date_published|date:"m" }}</month>
+                <day>{{ article.date_published|date:"d" }}</day>
+                <year>{{ article.date_published|date:"Y" }}</year>
+            </publication_date>
+            {% endif %}
+
+            {% if first_page or last_page or other_pages %}
+                <pages>
+                    {% if first_page %}
+                        <first_page>{{ first_page }}</first_page>
+                    {% endif %}
+                    {% if last_page %}
+                        <last_page>{{ last_page }}</last_page>
+                    {% endif %}
+                    {% if other_pages %}
+                        <other_pages>{{ other_pages }}</other_pages>
+                    {% endif %}
+                </pages>
+            {% endif %}
+
+            <doi_data>
+                <doi>{{ article.doi }}</doi>
+                <resource>{{ article.url }}</resource>
+            </doi_data>
+
+            {% if article.funding_data.exists %}
+            <funding_group>
+                {% for funder in article.funding_data.all %}
+                <funding_reference>
+                    <funder_name>{{ funder.name }}</funder_name>
+                    {% if funder.fundref_id %}
+                    <funder_identifier>{{ funder.fundref_id }}</funder_identifier>
+                    {% endif %}
+                    {% if funder.funding_id %}
+                    <award_number>{{ funder.funding_id }}</award_number>
+                    {% endif %}
+                </funding_reference>
+                {% endfor %}
+            </funding_group>
+            {% endif %}
+        </conference_paper>

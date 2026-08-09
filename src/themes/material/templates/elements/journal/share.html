@@ -1,0 +1,13 @@
+<h2>{% trans "Share" %}</h2>
+{% with article.get_doi_url|default:article.url as share_url %}
+  <div class="share-container">
+    <label for="share-link" class="sr-only">{% trans "Article URL" %}</label>
+    <input
+            id="share-link"
+            type="text"
+            value="{{ share_url }}"
+            readonly
+    >
+    {% include "elements/button_copy_element.html" with element_id="share-link" %}
+  </div>
+{% endwith %}

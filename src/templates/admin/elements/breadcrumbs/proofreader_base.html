@@ -1,0 +1,9 @@
+{% if subpage %}
+    <li><a href="{% url 'proofing_requests' %}">Proofing Requests</a></li>  
+    {% if article %}<li><a href="{% url 'proofing_article' article.pk %}">{{ article.safe_title }}</a></li>{% endif %}
+{% elif article %}
+    <li><a href="{% url 'proofing_requests' %}">Proofing Requests</a></li>
+    {% if article %}<li>{{ article.safe_title }}</li>{% endif %}
+{% else %}
+    <li>Proofing Requests</li>
+{% endif %}

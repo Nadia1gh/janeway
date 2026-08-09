@@ -1,0 +1,2216 @@
+__copyright__ = "Copyright 2017 Birkbeck, University of London"
+__author__ = "Martin Paul Eve & Andy Byers"
+__license__ = "AGPL v3"
+__maintainer__ = "Birkbeck Centre for Technology and Publishing"
+
+import os
+import re
+import uuid
+import json
+from dateutil import parser as dateparser
+import warnings
+import csv
+
+from django.db import connection, DEFAULT_DB_ALIAS, models
+from django.db.models import Q, Max, Subquery, OuterRef
+from django.db.models.query import RawQuerySet
+from django.db.models.sql.query import get_order_dir
+from django.contrib.postgres.search import (
+    SearchQuery,
+    SearchRank,
+    SearchVector,
+    SearchVectorField,
+)
+from django.utils import timezone
+from django.conf import settings
+from django.utils.html import mark_safe
+from django.utils.translation import gettext_lazy as _
+from django.dispatch import receiver
+from django.shortcuts import reverse
+from django.templatetags.static import static
+from django.template import Template, Context
+from django.utils import timezone
+from django.utils.html import format_html
+from django.core.validators import RegexValidator
+
+from openpyxl import load_workbook
+from simple_history.models import HistoricalRecords
+import swapper
+
+from core.file_system import JanewayFileSystemStorage
+from core import model_utils, files, models as core_models
+from utils import logic, models as utils_models
+from repository import install
+from utils.function_cache import cache
+from submission import models as submission_models
+from events import logic as event_logic
+from identifiers import models as identifier_models
+
+
+STAGE_PREPRINT_UNSUBMITTED = "preprint_unsubmitted"
+STAGE_PREPRINT_REVIEW = "preprint_review"
+STAGE_PREPRINT_PUBLISHED = "preprint_published"
+STAGE_PREPRINT_REJECTED = "preprint_rejected"
+
+SUBMITTED_STAGES = {
+    STAGE_PREPRINT_REVIEW,
+    STAGE_PREPRINT_PUBLISHED,
+    STAGE_PREPRINT_REJECTED,
+}
+
+
+def html_input_types():
+    return (
+        ("text", "Text"),
+        ("select", "Dropdown"),
+        ("checkbox", "Checkbox"),
+        ("number", "Number"),
+        ("date", "Date"),
+        ("textarea", "Text Area"),
+    )
+
+
+def width_choices():
+    return (
+        (3, "3"),
+        (6, "6"),
+        (9, "9"),
+        (12, "12"),
+    )
+
+
+def theme_choices():
+    return ((theme, theme) for theme in settings.REPOSITORY_THEMES)
+
+
+fs_path = os.path.join("files/")
+preprint_file_store = JanewayFileSystemStorage(location=fs_path)
+preprint_media_store = JanewayFileSystemStorage()
+
+
+def preprint_file_upload(instance, filename):
+    try:
+        uuid_filename = str(uuid.uuid4()) + "." + str(filename.split(".")[1])
+    except IndexError:
+        uuid_filename = str(uuid.uuid4())
+
+    path = os.path.join("repos", str(instance.preprint.pk), uuid_filename)
+    instance.original_filename = filename
+    return path
+
+
+def repo_media_upload(instance, filename):
+    try:
+        filename = str(uuid.uuid4()) + "." + str(filename.split(".")[1])
+    except IndexError:
+        filename = str(uuid.uuid4())
+
+    path = "repos/{0}/".format(instance.pk)
+    return os.path.join(path, filename)
+
+
+class Repository(model_utils.AbstractSiteModel):
+    AUTH_SUCCESS_URL = "repository_dashboard"
+
+    press = models.ForeignKey(
+        "press.Press",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    name = models.CharField(max_length=255)
+    short_name = models.CharField(
+        max_length=15, help_text="Shortened version of the name eg. olh. Max 15 chars."
+    )
+    object_name = models.CharField(
+        max_length=255,
+        help_text="eg. preprint or article",
+    )
+    object_name_plural = models.CharField(
+        max_length=255,
+        help_text="eg. preprints or articles",
+    )
+    managers = models.ManyToManyField("core.Account", blank=True)
+    submission_notification_recipients = models.ManyToManyField(
+        "core.Account",
+        blank=True,
+        related_name="submission_notification_repositories",
+    )
+    logo = model_utils.SVGImageField(
+        blank=True,
+        null=True,
+        storage=preprint_media_store,
+        upload_to=repo_media_upload,
+    )
+    favicon = models.ImageField(
+        blank=True,
+        null=True,
+        storage=preprint_media_store,
+        upload_to=repo_media_upload,
+    )
+    hero_background = model_utils.SVGImageField(
+        blank=True,
+        null=True,
+        storage=preprint_media_store,
+        upload_to=repo_media_upload,
+    )
+    publisher = models.CharField(
+        max_length=255,
+        help_text=_("Used for outputs including DC and Citation metadata"),
+    )
+    custom_js_code = models.TextField(
+        blank=True,
+        null=True,
+        help_text=_(
+            "The contents of this field are output into the JS area"
+            "at the foot of every Repository page."
+        ),
+    )
+    live = models.BooleanField(default=False, verbose_name="Repository is Live?")
+    limit_upload_to_pdf = models.BooleanField(
+        default=False,
+        help_text=_(
+            "If set to True, this will require all file uploads from"
+            "authors to be PDF files."
+        ),
+    )
+    about = model_utils.JanewayBleachField(blank=True, null=True)
+    start = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        verbose_name="Submission Start Text",
+    )
+    file_upload_help = model_utils.JanewayBleachField(
+        null=True,
+        blank=True,
+        help_text="Add any information that the author may need to know as "
+        "part of the file upload process.",
+        verbose_name="File Upload Help",
+    )
+    require_pdf_help = model_utils.JanewayBleachField(
+        default="requires that all author uploads be PDF files.",
+        help_text="When a repository requires that all manuscripts be PDF this text is combined with the repository "
+        "name and displayed with the default text it would diplay: RepositoryName requires that all author "
+        "uploads be PDF files.",
+        verbose_name="Limit Upload to PDF Help",
+        null=True,
+        blank=True,
+    )
+    additional_version_help = model_utils.JanewayBleachField(
+        blank=True,
+        help_text="This text allows repository managers to provide additional "
+        "information to authors when they are uploading an update "
+        "to their submission.",
+        default="",
+        verbose_name="Additional version upload help text",
+    )
+    submission = model_utils.JanewayBleachField(blank=True, null=True)
+    publication = model_utils.JanewayBleachField(blank=True, null=True)
+    decline = model_utils.JanewayBleachField(blank=True, null=True)
+    accept_version = model_utils.JanewayBleachField(blank=True, null=True)
+    decline_version = model_utils.JanewayBleachField(blank=True, null=True)
+    enable_comments = models.BooleanField(
+        default=True,
+        help_text="Enabling this will turn on the comment feature.",
+    )
+    enable_invited_comments = models.BooleanField(
+        default=True,
+        help_text="Enable to display the invited comments interface.",
+    )
+    new_comment = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="Sent to repository managers when a new comment is submitted "
+        "and awaiting moderation. "
+        "Available variables: {{ preprint.title }}, {{ manager.full_name }}, {{ url }}.",
+    )
+    comment_published = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="Sent to the submission author when a comment on their work is approved. "
+        "Available variables: {{ preprint.title }}, {{ preprint.owner.full_name }}, {{ url }}.",
+    )
+    comment_approved = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="Sent to the commenter when their comment is approved. "
+        "Available variables: {{ preprint.title }}, {{ comment.author.full_name }}, {{ url }}.",
+    )
+    review_invitation = model_utils.JanewayBleachField(blank=True, null=True)
+    review_helper = model_utils.JanewayBleachField(blank=True, null=True)
+    manager_review_status_change = model_utils.JanewayBleachField(blank=True, null=True)
+    reviewer_review_status_change = model_utils.JanewayBleachField(
+        blank=True, null=True
+    )
+    new_version_submitted = model_utils.JanewayBleachField(
+        blank=True,
+        help_text="Email sent when an author uploads a new version.",
+    )
+    footer = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        default="<p>Powered by Janeway</p>",
+    )
+    login_text = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="If text is added it will display on the login and register pages.",
+        verbose_name="Account Page Text",
+    )
+    submission_agreement = model_utils.JanewayBleachField(
+        null=True,
+        help_text="Add any information that the author may need to know as "
+        "part of their submission, eg. Copyright transfer etc.'",
+        default="<p>Authors grant us the right to publish, on this website, "
+        "their uploaded manuscript, supplementary materials and "
+        "any supplied metadata.</p>",
+    )
+
+    random_homepage_preprints = models.BooleanField(default=False)
+    homepage_preprints = models.ManyToManyField(
+        "submission.Article",
+        blank=True,
+    )
+    limit_access_to_submission = models.BooleanField(
+        default=False,
+        help_text="If enabled, users need to request access to submit preprints.",
+    )
+    submission_access_request_text = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="Describe any supporting information you want users to supply when requesting"
+        "access permissions for this repository. Linked to Limit Access to Submissions.",
+    )
+    review_submission_text = model_utils.JanewayBleachField(
+        blank=True,
+        default="<p>Please review your submission carefully. Make any "
+        "necessary changes to ensure that all information is accurate "
+        "and complete.</p><p>When you are satisfied with your review "
+        "click the button below to finalize your submission.</p>",
+        help_text="Text that displays on the review page just before the "
+        "author completes their submission.",
+    )
+    submission_access_contact = models.EmailField(
+        blank=True,
+        null=True,
+        help_text="Will be notified of new submission access requests.",
+    )
+    active_licenses = models.ManyToManyField(
+        "submission.Licence",
+        blank=True,
+    )
+    history = HistoricalRecords()
+    theme = models.CharField(
+        max_length=20,
+        blank=False,
+        default="OLH",
+        choices=theme_choices(),
+    )
+    display_public_metrics = models.BooleanField(
+        default=False, help_text="Enable this setting to display metrics publicly."
+    )
+    rou_default_name = models.CharField(
+        max_length=255,
+        default="Organisational Units",
+        help_text="Default name for the organisation structure within this repository.",
+    )
+    rou_struct_page_text = model_utils.JanewayBleachField(
+        blank=True,
+        default="<p>This page provides an overview of the organisational structure "
+        "within {{ repository.name }}. You can navigate through the hierarchy "
+        "to explore different units and their associated preprints.</p>",
+        help_text="Text that displays on the organisational unit page.",
+    )
+    headless_mode = models.BooleanField(
+        default=False,
+        help_text="Enable this feature to make this repository run in headless"
+        " mode, with no front end.",
+    )
+    crossref_enable = models.BooleanField(
+        default=False,
+        help_text="Enable to use crossref. All other fields must be complete.",
+    )
+    crossref_username = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    crossref_password = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    crossref_depositor_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    crossref_depositor_email = models.EmailField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    crossref_registrant = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    crossref_prefix = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    crossref_test_mode = models.BooleanField(
+        default=False,
+        help_text="Enable to use Crossref test.",
+    )
+
+    class Meta:
+        verbose_name_plural = "repositories"
+
+    @classmethod
+    def get_by_request(cls, request):
+        obj, path = super().get_by_request(request)
+        if not obj:
+            # Lookup by short_name
+            try:
+                short_name = request.path.split("/")[1]
+                obj = cls.objects.get(short_name=short_name)
+                path = short_name
+            except (IndexError, cls.DoesNotExist):
+                pass
+        return obj, path
+
+    def __str__(self):
+        return "[{}] {}".format(
+            "live" if self.live else "disabled",
+            self.name,
+        )
+
+    def top_level_subjects(self):
+        return Subject.objects.filter(
+            repository=self,
+            parent=None,
+        ).prefetch_related("children")
+
+    def additional_submission_fields(self):
+        return self.all_additional_submission_fields
+
+    def all_additional_submission_fields(self):
+        return RepositoryField.objects.filter(
+            repository=self,
+        )
+
+    def type_additional_submission_fields(self, submission_type_slug=None):
+        return RepositoryField.objects.filter(
+            repository=self,
+        ).filter(
+            Q(submission_type__isnull=True)
+            | Q(submission_type__slug=submission_type_slug)
+        )
+
+    def site_url(self, path="", query=""):
+        if self.domain and not settings.URL_CONFIG == "path":
+            return logic.build_url(
+                netloc=self.domain,
+                scheme=self._get_scheme(),
+                port=None,
+                path=path,
+                query=query,
+            )
+        else:
+            return self.press.site_path_url(self, path, query=query)
+
+    @property
+    def code(self):
+        return self.short_name
+
+    def reviewer_accounts(self):
+        reviewer_ids = RepositoryRole.objects.filter(
+            repository=self,
+            role__slug="reviewer",
+        ).values_list("user__id")
+        return core_models.Account.objects.filter(
+            pk__in=reviewer_ids,
+        )
+
+    @property
+    def best_large_image_url(self):
+        if self.hero_background:
+            return self.hero_background.url
+        else:
+            return static(settings.HERO_IMAGE_FALLBACK)
+
+    def render_setting(self, setting_text):
+        """
+        Renders a repository setting string, replacing placeholders like
+        {{ repository.name }}.
+        """
+        if not setting_text:
+            return ""
+
+        template = Template(setting_text)
+        context = Context({"repository": self})  # Mimic request context
+        return template.render(context)
+
+
+class RepositoryOrganisationUnit(models.Model):
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="The name of the unit, eg. 'Research' or 'Publications'.",
+    )
+    code = models.SlugField(
+        max_length=50,
+        help_text="A unique code within the repository for URL generation.",
+    )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="children",
+        help_text="Parent organisational unit, or leave blank if this is "
+        "a top-level unit.",
+    )
+
+    def __str__(self):
+        return f"{self.repository.code}/{self.code} - {self.name}"
+
+    class Meta:
+        unique_together = ("repository", "code")
+
+    def get_descendants(self):
+        """Returns all descendant ROUs recursively."""
+        descendants = list(self.children.all())  # Start with direct children
+        queue = list(descendants)
+
+        while queue:
+            parent = queue.pop()
+            children = list(parent.children.all())
+            descendants.extend(children)
+            queue.extend(children)
+
+        return descendants
+
+
+class RepositoryRole(models.Model):
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+    )
+    user = models.ForeignKey(
+        "core.Account",
+        on_delete=models.CASCADE,
+    )
+    role = models.ForeignKey(
+        "core.Role",
+        on_delete=models.CASCADE,
+    )
+
+    def __str__(self):
+        return "User {} registered as {} on Repo {}".format(
+            self.user.full_name(),
+            self.role,
+            self.repository.name,
+        )
+
+
+class RepositoryField(models.Model):
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+    )
+    submission_type = models.ForeignKey(
+        "RepositorySubmissionType",
+        blank=True,
+        null=True,
+        on_delete=models.CASCADE,
+        help_text="Optional, allows you to tie this field to a specific submission type. "
+        "Leave blank to tie this to all submission types.",
+    )
+    name = models.CharField(max_length=255)
+    input_type = models.CharField(
+        max_length=255,
+        choices=html_input_types(),
+    )
+    choices = models.CharField(
+        max_length=1000,
+        null=True,
+        blank=True,
+        help_text="Separate choices with the bar | character.",
+    )
+    required = models.BooleanField(default=True)
+    order = models.IntegerField()
+    help_text = models.TextField(
+        blank=True,
+        null=True,
+    )
+    display = models.BooleanField(
+        default=False,
+        help_text="Whether or not display this field in the article page",
+    )
+    dc_metadata_type = models.CharField(
+        max_length=255,
+        help_text=_(
+            "If this field is to be output as a dc metadata field you can add"
+            "the type here."
+        ),
+        blank=True,
+        null=True,
+    )
+
+    class Meta:
+        ordering = (
+            "order",
+            "name",
+        )
+
+    def __str__(self):
+        return "{}: {}".format(self.repository.name, self.name)
+
+
+class RepositoryFieldAnswer(models.Model):
+    field = models.ForeignKey(
+        RepositoryField,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    preprint = models.ForeignKey(
+        "Preprint",
+        on_delete=models.CASCADE,
+    )
+    answer = models.TextField()
+
+    def __str__(self):
+        return "{}: {}".format(self.preprint, self.answer)
+
+
+class PreprintSearchManager(model_utils.BaseSearchManagerMixin):
+    SORT_KEYS = {
+        "-title",
+        "title",
+        "date_published",
+        "-date_published",
+    }
+
+    def search(self, *args, **kwargs):
+        queryset = super().search(*args, **kwargs)
+        if not isinstance(queryset, RawQuerySet):
+            queryset = queryset.filter(
+                date_published__lte=timezone.now(),
+                date_published__isnull=False,
+            )
+        return queryset
+
+    def _search(self, search_term, search_filters, sort=None, site=None, queryset=None):
+        """SQLite-compatible search across preprint fields.
+
+        The base implementation targets Article's ``frozenauthor`` relation,
+        which Preprint does not have, so we mirror the Postgres/MySQL author
+        lookups against the ``preprintauthor`` relation here.
+        """
+        preprints = queryset or self.get_queryset()
+        if search_term:
+            escaped = re.escape(search_term)
+            split_term = [re.escape(word) for word in search_term.split(" ")]
+            split_term.append(escaped)
+            search_regex = "^({})$".format("|".join({name for name in split_term}))
+            q_object = Q()
+            if search_filters.get("title"):
+                q_object = q_object | Q(title__icontains=search_term)
+            if search_filters.get("abstract"):
+                q_object = q_object | Q(abstract__icontains=search_term)
+            if search_filters.get("keywords"):
+                q_object = q_object | Q(keywords__word=search_term)
+            if search_filters.get("authors"):
+                q_object = q_object | (
+                    Q(preprintauthor__account__first_name__iregex=search_regex)
+                    | Q(preprintauthor__account__last_name__iregex=search_regex)
+                )
+            preprints = preprints.filter(q_object)
+            if site:
+                preprints = preprints.filter(repository=site)
+        return preprints.distinct()
+
+    def mysql_search(
+        self, search_term, search_filters, sort=None, site=None, queryset=None
+    ):
+        queryset = queryset or self.get_queryset().none()
+        if not search_term or not any(search_filters.values()):
+            return queryset
+        querysets = []
+        if search_filters.get("title"):
+            querysets.append(self.get_queryset().filter(title__search=search_term))
+        if search_filters.get("authors"):
+            querysets.append(
+                self.get_queryset().filter(
+                    preprintauthor__account__first_name__search=search_term
+                )
+            )
+            querysets.append(
+                self.get_queryset().filter(
+                    preprintauthor__account__last_name__search=search_term
+                )
+            )
+        if search_filters.get("abstract"):
+            querysets.append(self.get_queryset().filter(abstract__search=search_term))
+        if search_filters.get("keywords"):
+            querysets.append(
+                self.get_queryset().filter(keywords__word__search=search_term)
+            )
+        if search_filters.get("full_text"):
+            querysets.append(
+                self.get_queryset().filter(
+                    preprintversion__preprintfile__file__text__contents__search=search_term,
+                    preprintversion__id__in=self._latest_version_subq(),
+                )
+            )
+        for search_queryset in querysets:
+            queryset |= search_queryset
+
+        if sort in self.SORT_KEYS:
+            queryset = queryset.order_by(sort)
+
+        return queryset
+
+    def postgres_search(
+        self, search_term, search_filters, sort=None, site=None, queryset=None
+    ):
+        queryset = queryset or self.get_queryset()
+        if not search_term or not any(search_filters.values()):
+            return queryset.none()
+        queryset = queryset.filter(
+            date_published__lte=timezone.now(),
+            date_published__isnull=False,
+        )
+        if site:
+            queryset = queryset.filter(repository=site)
+        lookups, annotations = self.build_postgres_lookups(search_term, search_filters)
+        if annotations:
+            queryset = queryset.annotate(**annotations)
+        if lookups:
+            queryset = queryset.filter(**lookups)
+        if search_filters.get("full_text"):
+            queryset = queryset.filter(
+                preprintversion__pk__in=self._latest_version_subq()
+            )
+
+        if not sort or sort not in self.SORT_KEYS:
+            sort = "-relevance"
+
+        queryset = queryset.order_by("id").distinct("id")
+
+        inner_sql = self.stringify_queryset(queryset)
+
+        if "relevance" in sort:
+            return self.model.objects.raw(
+                f"SELECT * from ({inner_sql}) AS search ORDER BY relevance DESC"
+            )
+        else:
+            order_by_sql = self.build_order_by_sql(sort)
+            return self.model.objects.raw(
+                f"SELECT * from ({inner_sql}) AS search {order_by_sql}"
+            )
+
+    def _latest_version_subq(self):
+        return Subquery(
+            PreprintVersion.objects.filter(
+                preprint=OuterRef("pk"),
+            )
+            .order_by("-version")
+            .values("pk")[:1]
+        )
+
+    def build_order_by_sql(self, sort_key):
+        sorted_qs = self.none().order_by(sort_key)
+        sql_compiler = sorted_qs._query.get_compiler(DEFAULT_DB_ALIAS)
+        order_by = sql_compiler.query.order_by
+        order_strings = []
+        for field in order_by:
+            order_strings.append("%s %s" % get_order_dir(field, "ASC"))
+        return "ORDER BY %s" % ", ".join(order_strings)
+
+    def build_postgres_lookups(self, search_term, search_filters):
+        lookups = {}
+        annotations = {"relevance": models.Value(1.0, models.FloatField())}
+        vectors = []
+        if search_filters.get("title"):
+            vectors.append(SearchVector("title", weight="A"))
+        if search_filters.get("keywords"):
+            vectors.append(SearchVector("keywords__word", weight="B"))
+        if search_filters.get("authors"):
+            vectors.append(
+                SearchVector("preprintauthor__account__last_name", weight="B")
+            )
+            vectors.append(
+                SearchVector("preprintauthor__account__first_name", weight="B")
+            )
+        if search_filters.get("abstract"):
+            vectors.append(SearchVector("abstract", weight="C"))
+        if search_filters.get("full_text"):
+            FileTextModel = swapper.load_model("core", "FileText")
+            field_type = FileTextModel._meta.get_field("contents")
+            if isinstance(field_type, SearchVectorField):
+                vectors.append(
+                    model_utils.SearchVector(
+                        "preprintversion__file__text__contents",
+                        weight="D",
+                    )
+                )
+            else:
+                vectors.append(
+                    SearchVector(
+                        "peprintversion_set__submission_file__text__contents",
+                        weight="D",
+                    )
+                )
+        if vectors:
+            vector = vectors[0]
+            for v in vectors[1:]:
+                vector += v
+            query = SearchQuery(search_term)
+            relevance = SearchRank(vector, query)
+            annotations["relevance"] = relevance
+            lookups["relevance__gte"] = 0.01
+
+        if search_filters.get("ORCID"):
+            lookups["preprintauthor__account__orcid"] = search_term
+        return lookups, annotations
+
+    @staticmethod
+    def stringify_queryset(queryset):
+        sql, params = queryset.query.sql_with_params()
+        with connection.cursor() as cursor:
+            return cursor.mogrify(sql, params).decode()
+
+
+class Preprint(models.Model):
+    objects = PreprintSearchManager()
+
+    repository = models.ForeignKey(
+        Repository,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    submission_type = models.ForeignKey(
+        "RepositorySubmissionType",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    owner = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+        help_text="The account that submitted this item.",
+    )
+    stage = models.CharField(max_length=25, default=STAGE_PREPRINT_UNSUBMITTED)
+    title = models.CharField(
+        max_length=300,
+        help_text=_("Your article title"),
+    )
+    abstract = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+    )
+    submission_file = models.ForeignKey(
+        "PreprintFile",
+        related_name="submission_file",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    meta_image = models.ImageField(
+        blank=True,
+        null=True,
+        upload_to=preprint_file_upload,
+        storage=preprint_media_store,
+    )
+    subject = models.ManyToManyField(
+        "Subject",
+        blank=False,
+        null=True,
+    )
+    keywords = model_utils.M2MOrderedThroughField(
+        "submission.Keyword",
+        blank=True,
+        null=True,
+        through="repository.KeywordPreprint",
+    )
+    license = models.ForeignKey(
+        "submission.Licence",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    comments_editor = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Comments to the Editor",
+        help_text="Add any comments you'd like the editor to consider here.",
+    )
+    doi = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Published DOI",
+        help_text="You can add a DOI linking to this item's published version using this field. "
+        "Please provide the full DOI ie. https://doi.org/10.1017/CBO9781316161012.",
+    )
+    preprint_doi = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Preprint DOI",
+        help_text="System supplied DOI. ",
+    )
+    preprint_decline_note = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+    )
+    preprint_decision_notification = models.BooleanField(
+        default=False,
+    )
+    date_started = models.DateTimeField(default=timezone.now)
+    date_submitted = models.DateTimeField(blank=True, null=True)
+    date_accepted = models.DateTimeField(blank=True, null=True)
+    date_declined = models.DateTimeField(blank=True, null=True)
+    date_published = models.DateTimeField(blank=True, null=True)
+    date_updated = models.DateTimeField(blank=True, null=True)
+    current_step = models.IntegerField(default=1)
+
+    article = models.OneToOneField(
+        "submission.Article",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        help_text="Linked article of this preprint.",
+    )
+    organisation_units = models.ManyToManyField(
+        "repository.RepositoryOrganisationUnit",
+        blank=True,
+        related_name="preprints",
+        help_text="The organisational units this preprint belongs to.",
+    )
+
+    def __str__(self):
+        return "{}".format(
+            self.title,
+        )
+
+    def old_versions(self):
+        return PreprintVersion.objects.filter(
+            preprint=self,
+        ).exclude(
+            preprint=self.current_version,
+        )
+
+    @property
+    def current_version(self):
+        try:
+            return self.preprintversion_set.all()[0]
+        except IndexError:
+            return None
+
+    def version_files(self):
+        return [
+            version.file
+            for version in self.preprintversion_set.filter(
+                Q(moderated_version__approved=True) | Q(moderated_version__isnull=True)
+            )
+        ]
+
+    @property
+    @cache(300)
+    def views(self):
+        return PreprintAccess.objects.filter(preprint=self, file__isnull=True)
+
+    @property
+    @cache(300)
+    def downloads(self):
+        return PreprintAccess.objects.filter(
+            preprint=self,
+            file__isnull=False,
+        )
+
+    def next_author_order(self):
+        try:
+            last_author = self.preprintauthor_set.all().reverse()[0]
+            return last_author.order + 1
+        except IndexError:
+            return 0
+
+    def next_version_number(self):
+        try:
+            last_version = self.preprintversion_set.all()[0]
+            return last_version.version + 1
+        except IndexError:
+            return 1
+
+    @property
+    def authors(self):
+        preprint_authors = PreprintAuthor.objects.filter(
+            preprint=self,
+        ).select_related("account")
+
+        return [pa.account for pa in preprint_authors if pa.account]
+
+    @property
+    def safe_title(self):
+        if self.title:
+            return mark_safe(self.title)
+        else:
+            return "[Untitled]"
+
+    @property
+    def supplementaryfiles(self):
+        return PreprintSupplementaryFile.objects.filter(
+            preprint=self,
+        )
+
+    def author_objects(self):
+        pks = [author.account.pk for author in self.authors]
+        return core_models.Account.objects.filter(pk__in=pks)
+
+    def display_authors_compact(self):
+        etal = ", ".join([author.full_name() for author in self.authors[:3]])
+        if len(self.authors) > 3:
+            etal = etal + ", et al."
+        return etal
+
+    def display_authors(self):
+        return ", ".join(
+            [author.full_name() for author in self.authors if author is not None]
+        )
+
+    def add_user_as_author(self, user):
+        preprint_author, created = PreprintAuthor.objects.get_or_create(
+            account=user,
+            preprint=self,
+            defaults={"order": self.next_author_order()},
+        )
+        for affiliation in user.affiliations.all():
+            core_models.ControlledAffiliation.objects.get_or_create(
+                preprint_author=preprint_author,
+                title=affiliation.title,
+                department=affiliation.department,
+                organization=affiliation.organization,
+                is_primary=affiliation.is_primary,
+                start=affiliation.start,
+                end=affiliation.end,
+            )
+
+        return created
+
+    def add_author(self, author):
+        preprint_author, created = PreprintAuthor.objects.get_or_create(
+            author=author,
+            preprint=self,
+            order=self.next_author_order(),
+        )
+
+        return preprint_author, created
+
+    def add_supplementary_file(self, supplementary):
+        return PreprintSupplementaryFile.objects.get_or_create(
+            label=supplementary.cleaned_data["label"],
+            url=supplementary.cleaned_data["url"],
+            preprint=self,
+            defaults={"order": self.next_supp_file_order()},
+        )
+
+    def next_supp_file_order(self):
+        orderings = [supp_file.order for supp_file in self.supplementaryfiles]
+        return max(orderings) + 1 if orderings else 0
+
+    def user_is_author(self, user):
+        if user.email in [author.email for author in self.authors]:
+            return True
+
+        return False
+
+    def set_file(self, file, original_filename):
+        self.submission_file.original_filename = original_filename
+        self.submission_file.file = file
+        self.submission_file.save()
+
+    def submit_preprint(self):
+        self.date_submitted = timezone.now()
+        self.stage = STAGE_PREPRINT_REVIEW
+        self.current_step = 5
+        self.save()
+
+    def subject_editors(self):
+        editors = []
+        for subject in self.subject.all():
+            for editor in subject.editors.all():
+                editors.append(editor)
+
+        return editors
+
+    def has_version(self):
+        return self.preprintversion_set.all()
+
+    def additional_field_answers(self):
+        return self.repositoryfieldanswer_set.all()
+
+    def display_additional_fields(self):
+        return self.repositoryfieldanswer_set.filter(
+            field__display=True,
+        )
+
+    def make_new_version(self, file):
+        PreprintVersion.objects.create(
+            preprint=self,
+            file=file,
+            version=self.next_version_number(),
+        )
+
+    def update_date_published(self, date_published):
+        self.date_published = date_published
+        self.save()
+
+    def accept(self, date_published):
+        self.date_accepted = timezone.now()
+        self.date_declined = None
+        self.stage = STAGE_PREPRINT_PUBLISHED
+        self.date_published = date_published
+        self.save()
+
+    def decline(self, note):
+        self.date_declined = timezone.now()
+        self.date_accepted = None
+        self.stage = STAGE_PREPRINT_REJECTED
+        self.preprint_decline_note = note
+        self.save()
+
+    def reset(self):
+        self.date_accepted = None
+        self.date_declined = None
+        self.date_published = None
+        self.preprint_decision_notification = False
+        self.stage = STAGE_PREPRINT_REVIEW
+        self.preprint_decline_note = None
+        self.save()
+
+    def is_published(self):
+        if self.stage == STAGE_PREPRINT_PUBLISHED and self.date_published:
+            return True
+        return False
+
+    def current_version_file_type(self):
+        if self.current_version.file.mime_type in files.HTML_MIMETYPES:
+            return "html"
+        elif self.current_version.file.mime_type in files.PDF_MIMETYPES:
+            return "pdf"
+        return None
+
+    @property
+    @cache(600)
+    def url(self):
+        return self.repository.site_url(path=self.local_url)
+
+    @property
+    def local_url(self):
+        url = reverse(
+            "repository_preprint",
+            kwargs={
+                "preprint_id": self.id,
+            },
+        )
+
+        return url
+
+    def get_linked_books(self):
+        try:
+            from plugins.books.models import Book
+        except (ImportError, LookupError):
+            return []
+
+        return Book.objects.filter(linked_repository_objects=self)
+
+    def create_article(
+        self, journal, workflow_stage, journal_license, journal_section, force=False
+    ):
+        """
+        Creates an article in a given journal and workflow stage.
+        """
+        if not self.article or force:
+            # create base article
+            article = submission_models.Article.objects.create(
+                journal=journal,
+                owner=self.owner,
+                title=self.title,
+                abstract=self.abstract,
+                license=journal_license,
+                section=journal_section,
+                date_submitted=timezone.now(),
+                comments_editor="Submitted from {}".format(self.repository.name),
+                stage=workflow_stage,
+            )
+
+            # copy authors to submission
+            for preprint_author in self.preprintauthor_set.all():
+                if preprint_author.account:
+                    preprint_author.account.snapshot_as_author(article)
+
+            # copy preprints latest file and add it as a MS file to the article
+            file = files.copy_preprint_file_to_article(
+                self,
+                article,
+                manuscript=True,
+            )
+
+            # save and return the article
+            self.article = article
+            self.save()
+            return article
+
+        # Return None to indicate this method has not created a new article object.
+        return None
+
+
+class RepositorySubmissionType(models.Model):
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+        related_name="object_types",
+    )
+    name = models.CharField(max_length=100)
+    name_plural = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=255, unique=True)
+    pill_colour = models.CharField(
+        max_length=7,
+        default="#1e40af",
+        validators=[
+            RegexValidator(
+                regex=r"^#(?:[0-9a-fA-F]{3}){1,2}$",
+                message="Enter a valid hex colour code (e.g. #1e40af or #fff).",
+            ),
+        ],
+        help_text="Hex colour code for the pill border and text (e.g. #1e40af)",
+    )
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
+class KeywordPreprint(models.Model):
+    keyword = models.ForeignKey(
+        "submission.Keyword",
+        on_delete=models.CASCADE,
+    )
+    preprint = models.ForeignKey(
+        Preprint,
+        on_delete=models.CASCADE,
+    )
+    order = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["order"]
+        unique_together = ("keyword", "preprint")
+
+    def __str__(self):
+        return self.keyword.word
+
+    def __repr__(self):
+        return "KeywordPreprint(%s, %d)" % (self.keyword.word, self.preprint.id)
+
+
+class PreprintFile(models.Model):
+    preprint = models.ForeignKey(
+        Preprint,
+        on_delete=models.CASCADE,
+    )
+    file = models.FileField(
+        upload_to=preprint_file_upload,
+        storage=preprint_file_store,
+    )
+    original_filename = models.TextField()
+    uploaded = models.DateTimeField(default=timezone.now)
+    mime_type = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    size = models.PositiveIntegerField(default=0)
+
+    text = models.OneToOneField(
+        swapper.get_model_name("core", "FileText"),
+        blank=True,
+        null=True,
+        related_name="preprint_file",
+        on_delete=models.SET_NULL,
+    )
+
+    def __str__(self):
+        return self.original_filename
+
+    def filename(self):
+        return os.path.basename(self.file.name)
+
+    @property
+    def uuid_filename(self):
+        return self.filename()
+
+    def get_file_mime_type(self):
+        return files.file_path_mime(self.file.path)
+
+    def path_parts(self):
+        path = os.path.dirname(os.path.abspath(self.file.path))
+        return path
+
+    def reverse_kwargs(self):
+        return {
+            "preprint_id": self.preprint.pk,
+            "file_id": self.pk,
+        }
+
+    def download_url(self):
+        return reverse(
+            "repository_file_download",
+            kwargs=self.reverse_kwargs(),
+        )
+
+    def contents(self):
+        file = open(self.file.path, mode="r")
+        contents = file.read()
+        file.close()
+        return contents
+
+    def index_full_text(self):
+        indexed = False
+        parser = files.MIME_TO_TEXT_PARSER.get(self.get_file_mime_type())
+        if not parser:
+            # No support for this mime type
+            return indexed
+
+        parsed = parser(self.file.path)
+
+        FileTextModel = swapper.load_model("core", "FileText")
+        preprocessed_text = FileTextModel.preprocess_contents(parsed)
+        if self.text:
+            self.text.update_contents(preprocessed_text)
+            indexed = True
+        else:
+            file_text = FileTextModel.objects.create(
+                preprint_file=self,
+                contents=preprocessed_text,
+            )
+            self.text = file_text
+            self.save()
+            indexed = True
+
+        return indexed
+
+
+class PreprintSupplementaryFile(models.Model):
+    preprint = models.ForeignKey(
+        Preprint,
+        on_delete=models.CASCADE,
+    )
+    url = models.URLField()
+    label = models.CharField(
+        max_length=200, verbose_name=_("Label"), default="Supplementary File"
+    )
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("order",)
+        unique_together = ("url", "preprint")
+
+
+class PreprintAccess(models.Model):
+    preprint = models.ForeignKey(
+        Preprint,
+        on_delete=models.CASCADE,
+    )
+    file = models.ForeignKey(
+        PreprintFile,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    identifier = models.TextField(blank=True, null=True)
+    accessed = models.DateTimeField(auto_now_add=True)
+    country = models.ForeignKey(
+        "core.Country",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+
+    @property
+    def access_type(self):
+        if self.file:
+            return "download"
+        return "view"
+
+    class Meta:
+        verbose_name_plural = "preprint access records"
+
+
+class PreprintAuthorQueryset(model_utils.AffiliationCompatibleQueryset):
+    AFFILIATION_RELATED_NAME = "preprint_author"
+
+
+class PreprintAuthorManager(models.Manager):
+    def get_queryset(self):
+        return PreprintAuthorQueryset(self.model).select_related("account")
+
+
+class PreprintAuthor(models.Model):
+    preprint = models.ForeignKey(
+        "Preprint",
+        on_delete=models.CASCADE,
+    )
+    account = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    order = models.PositiveIntegerField(default=0)
+
+    objects = PreprintAuthorManager()
+
+    class Meta:
+        ordering = ("order",)
+        unique_together = ("account", "preprint")
+
+    def __str__(self):
+        return "{author} linked to {preprint}".format(
+            author=self.account.full_name() if self.account else "",
+            preprint=self.preprint.title,
+        )
+
+    @property
+    def affiliation(self):
+        """
+        Use `primary_affiliation` or `affiliations` instead.
+
+        For backwards compatibility, this is a property.
+        Different from core.models.Account.affiliation
+        and submission.models.FrozenAuthor.affiliation,
+        which are methods.
+        :rtype: str
+        """
+        return self.primary_affiliation(as_object=False)
+
+    @affiliation.setter
+    def affiliation(self, value):
+        core_models.ControlledAffiliation.get_or_create_without_ror(
+            institution=value,
+            preprint_author=self,
+        )
+
+    def primary_affiliation(self, as_object=True):
+        return core_models.ControlledAffiliation.get_primary(
+            affiliated_object=self,
+            as_object=as_object,
+        )
+
+    @property
+    def affiliations(self):
+        return core_models.ControlledAffiliation.objects.filter(
+            preprint_author=self,
+        )
+
+    @property
+    def full_name(self):
+        if not self.account.middle_name:
+            return "{} {}".format(self.account.first_name, self.account.last_name)
+        else:
+            return "{} {} {}".format(
+                self.account.first_name,
+                self.account.middle_name,
+                self.account.last_name,
+            )
+
+    def dc_name(self):
+        if not self.account.middle_name:
+            return "{}, {}".format(self.account.last_name, self.account.first_name)
+        else:
+            return "{}. {} {}".format(
+                self.account.last_name,
+                self.account.first_name,
+                self.account.middle_name,
+            )
+
+    def to_dc(self):
+        return '<meta name="DC.Contributor" content="{}">'.format(
+            self.dc_name,
+        )
+
+    def display_affiliation(self):
+        if self.affiliation:
+            return self.affiliation
+        if self.account is not None:
+            return self.account.institution
+
+
+class Author(models.Model):
+    """
+    Deprecated. Please use PreprintAuthor instead.
+    """
+
+    email_address = models.EmailField(unique=True)
+    first_name = models.CharField(max_length=255)
+    middle_name = models.CharField(max_length=255, blank=True, null=True)
+    last_name = models.CharField(max_length=255)
+    affiliation = models.TextField(blank=True, null=True)
+    orcid = models.CharField(
+        max_length=255, blank=True, null=True, verbose_name=_("ORCID")
+    )
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn("Use PreprintAuthor instead.")
+        super().__init__(*args, **kwargs)
+
+    @property
+    def full_name(self):
+        if not self.middle_name:
+            return "{} {}".format(self.first_name, self.last_name)
+        else:
+            return "{} {} {}".format(
+                self.first_name,
+                self.middle_name,
+                self.last_name,
+            )
+
+
+class PreprintVersion(models.Model):
+    preprint = models.ForeignKey(
+        Preprint,
+        on_delete=models.CASCADE,
+    )
+    file = models.ForeignKey(
+        PreprintFile,
+        on_delete=models.CASCADE,
+        null=True,
+    )
+    version = models.IntegerField(default=1)
+    date_time = models.DateTimeField(default=timezone.now)
+    moderated_version = models.ForeignKey(
+        "VersionQueue",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    title = models.CharField(
+        max_length=300,
+        help_text=_("Your article title"),
+        blank=True,
+    )
+    abstract = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+    )
+    published_doi = models.URLField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Published Article DOI",
+        help_text="Please use the following format for your DOI: https://doi.org/10.xxxx/xxxx",
+    )
+
+    class Meta:
+        ordering = ("-version", "-date_time", "-id")
+
+    def render(self):
+        """
+        Render the file associated with this version as HTML, if possible.
+        Supports: PDF, HTML, images, plain text.
+        """
+        if not self.file or not self.file.file:
+            return ""
+
+        file_path = self.file.file.path
+        if not os.path.exists(file_path):
+            return ""
+
+        mime_type = self.file.mime_type or files.guess_mime(self.file.file.url)[0]
+        if not mime_type:
+            return ""
+
+        if mime_type == "application/pdf":
+            return self.render_pdf()
+        elif mime_type == "text/html":
+            return self.render_html()
+        elif mime_type.startswith("image/"):
+            return self.render_image()
+        elif mime_type.endswith("csv"):
+            return self.render_csv()
+        elif mime_type.startswith("text/"):
+            return self.render_text()
+        elif mime_type in (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+        ):
+            return self.render_excel()
+
+        return format_html(
+            "<p>Preview not available for this file type: {}</p>",
+            mime_type,
+        )
+
+    def render_pdf(self):
+        pdf_view_url = reverse(
+            "repository_pdf",
+            kwargs={"preprint_id": self.preprint.pk},
+        )
+        download_url = reverse(
+            "repository_file_download",
+            kwargs={
+                "preprint_id": self.preprint.pk,
+                "file_id": self.file.pk,
+            },
+        )
+        return format_html(
+            '<iframe src="{}?file={}" width="100%" height="100%" '
+            'style="min-height: 900px;" allowfullscreen webkitallowfullscreen></iframe>',
+            pdf_view_url,
+            download_url,
+        )
+
+    def render_image(self):
+        download_url = reverse(
+            "repository_file_download",
+            kwargs={
+                "preprint_id": self.preprint.pk,
+                "file_id": self.file.pk,
+            },
+        )
+        return format_html(
+            '<img src="{}" alt="Preprint image" style="max-width:100%; height:auto;">',
+            download_url,
+        )
+
+    def render_text(self):
+        try:
+            with open(self.file.file.path, "r", encoding="utf-8") as f:
+                content = f.read()
+                return format_html("<pre>{}</pre>", content)
+        except Exception:
+            return "<p>Unable to render text content.</p>"
+
+    def render_html(self):
+        return self.html()
+
+    def render_csv(self, max_rows=10, max_cols=5):
+        """
+        Render the first `max_rows` and `max_cols` of a CSV file as an HTML table,
+        with truncation notices if applicable.
+        """
+        try:
+            with open(self.file.file.path, newline="", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+
+            if not rows:
+                return "<p>CSV file is empty.</p>"
+
+            header = rows[0]
+            total_cols = len(header)
+            total_rows = len(rows) - 1
+
+            display_cols = header[:max_cols]
+            data_rows = [row[:max_cols] for row in rows[1 : max_rows + 1]]
+
+            table = ['<table class="table table-striped table-bordered">']
+            table.append(
+                "<thead><tr>{}</tr></thead>".format(
+                    "".join(f"<th>{col}</th>" for col in display_cols)
+                )
+            )
+            table.append("<tbody>")
+            for row in data_rows:
+                table.append(
+                    "<tr>{}</tr>".format("".join(f"<td>{cell}</td>" for cell in row))
+                )
+            table.append("</tbody></table>")
+
+            messages = []
+            if total_rows > max_rows:
+                messages.append(f"Showing first {max_rows} of {total_rows} rows.")
+            if total_cols > max_cols:
+                messages.append(f"Showing first {max_cols} of {total_cols} columns.")
+
+            if messages:
+                table.append(f"<p>{' '.join(messages)}</p>")
+
+            return format_html("".join(table))
+
+        except Exception as e:
+            return format_html("<p>Error rendering CSV: {}</p>", str(e))
+
+    def render_excel(self, max_rows=10, max_cols=5):
+        """
+        Render the first `max_rows` and `max_cols` of the first worksheet in an Excel file
+        as an HTML table, with truncation messages if applicable.
+        """
+        try:
+            wb = load_workbook(filename=self.file.file.path, read_only=True)
+            sheet = wb.active
+
+            rows = list(sheet.iter_rows(values_only=True))
+            if not rows:
+                return "<p>Excel file is empty.</p>"
+
+            header = rows[0]
+            total_cols = len(header)
+            total_rows = len(rows) - 1
+
+            display_cols = header[:max_cols]
+            data_rows = [row[:max_cols] for row in rows[1 : max_rows + 1]]
+
+            table = ['<table class="table table-striped table-bordered">']
+            table.append(
+                "<thead><tr>{}</tr></thead>".format(
+                    "".join(f"<th>{col}</th>" for col in display_cols)
+                )
+            )
+            table.append("<tbody>")
+            for row in data_rows:
+                table.append(
+                    "<tr>{}</tr>".format(
+                        "".join(
+                            f"<td>{cell if cell is not None else ''}</td>"
+                            for cell in row
+                        )
+                    )
+                )
+            table.append("</tbody></table>")
+
+            messages = []
+            if total_rows > max_rows:
+                messages.append(f"Showing first {max_rows} of {total_rows} rows.")
+            if total_cols > max_cols:
+                messages.append(f"Showing first {max_cols} of {total_cols} columns.")
+
+            if messages:
+                table.append(f"<p>{' '.join(messages)}</p>")
+
+            return format_html("".join(table))
+
+        except Exception as e:
+            return format_html("<p>Error rendering Excel file: {}</p>", str(e))
+
+    def html(self):
+        if self.file.mime_type in files.HTML_MIMETYPES:
+            return self.file.contents()
+        else:
+            return ""
+
+    @property
+    def safe_title(self):
+        if self.title:
+            return mark_safe(self.title)
+        else:
+            return "[Untitled]"
+
+    def __str__(self):
+        return f"{self.preprint} (version {self.version})"
+
+    def get_doi_pattern(self):
+        return f"{self.preprint.repository.crossref_prefix}/{self.preprint.repository.short_name}.{self.preprint.pk}.v{self.version}"
+
+    def get_doi(self, _object=False):
+        try:
+            try:
+                doi = identifier_models.Identifier.objects.get(
+                    id_type="doi", preprint_version=self
+                )
+            except identifier_models.Identifier.MultipleObjectsReturned:
+                doi = identifier_models.Identifier.objects.filter(
+                    id_type="doi",
+                    preprint_version=self,
+                ).first()
+            if not _object:
+                return doi.identifier
+            else:
+                return doi
+        except identifier_models.Identifier.DoesNotExist:
+            return None
+
+    def public_download_url(self):
+        if self.preprint and self.file:
+            path = reverse(
+                "repository_file_download",
+                kwargs={
+                    "preprint_id": self.preprint.pk,
+                    "file_id": self.file.pk,
+                },
+            )
+            return self.preprint.repository.site_url(
+                path=path,
+            )
+        else:
+            return ""
+
+
+class Comment(models.Model):
+    author = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    preprint = models.ForeignKey(
+        Preprint,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    reply_to = models.ForeignKey(
+        "self",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    date_time = models.DateTimeField(default=timezone.now)
+    body = model_utils.JanewayBleachField(verbose_name="Write your comment:")
+    is_reviewed = models.BooleanField(default=False)
+    is_public = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("-date_time", "-pk")
+
+    def __str__(self):
+        return "Comment by {author} on {article}".format(
+            author=self.author.full_name(),
+            article=self.preprint.title,
+        )
+
+    def toggle_public(self):
+        if self.is_public:
+            self.is_public = False
+        else:
+            self.is_public = True
+
+        self.is_reviewed = True
+        self.save()
+
+    def mark_reviewed(self):
+        self.is_reviewed = True
+        self.save()
+
+
+class Subject(models.Model):
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(blank=True, max_length=255)
+    editors = models.ManyToManyField("core.Account", blank=True)
+    enabled = models.BooleanField(
+        default=True,
+        help_text="If disabled, this subject will not appear publicly.",
+    )
+    parent = models.ForeignKey(
+        "self",
+        blank=True,
+        null=True,
+        related_name="children",
+        on_delete=models.SET_NULL,
+    )
+
+    class Meta:
+        ordering = ("slug", "pk")
+
+    def __str__(self):
+        return self.name
+
+    def published_preprints(self):
+        return self.preprint_set.filter(
+            repository=self.repository,
+            stage=STAGE_PREPRINT_PUBLISHED,
+        )
+
+    def published_preprints_count(self):
+        return self.published_preprints().count()
+
+
+def version_choices():
+    return (
+        ("correction", "Text Correction"),
+        ("metadata_correction", "Metadata Correction"),
+        ("version", "New Version"),
+    )
+
+
+class VersionQueue(models.Model):
+    preprint = models.ForeignKey(
+        Preprint,
+        on_delete=models.CASCADE,
+    )
+    file = models.ForeignKey(
+        PreprintFile,
+        null=True,
+        on_delete=models.CASCADE,
+    )
+    update_type = models.CharField(max_length=20, choices=version_choices())
+
+    date_submitted = models.DateTimeField(default=timezone.now)
+    date_decision = models.DateTimeField(blank=True, null=True)
+    approved = models.BooleanField(default=False)
+
+    published_doi = models.URLField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Published Article DOI",
+        help_text="Please use the following format for your DOI: https://doi.org/10.xxxx/xxxx",
+    )
+
+    title = models.CharField(
+        max_length=300,
+        help_text=_("Your article title"),
+    )
+    abstract = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+    )
+
+    def approve(self):
+        self.date_decision = timezone.now()
+        self.approved = True
+        current_version = None
+
+        # Update the current version to have the Preprint's current title
+        # and abstract.
+        if self.preprint.current_version is not None:
+            current_version = self.preprint.current_version
+            current_version.title = self.preprint.title
+            current_version.abstract = self.preprint.abstract
+            current_version.published_doi = self.preprint.doi
+            this_file = self.preprint.current_version.file
+        # no version yet
+        else:
+            this_file = self.preprint.submission_file
+
+        # Create a new PreprintVersion, this will now be the current_version.
+        # If the current VersionQueue has no file (in the case of Metadata
+        # updates) use the preprint's current version's file.
+        PreprintVersion.objects.create(
+            preprint=self.preprint,
+            file=self.file if self.file else this_file,
+            version=self.preprint.next_version_number(),
+            moderated_version=self,
+            published_doi=self.published_doi,
+        )
+
+        # Overwrite the preprint's metadata now we have a historical record.
+        # Check that title and abstract have value, if not there is no change.
+        if self.title:
+            self.preprint.title = self.title
+        if self.abstract:
+            self.preprint.abstract = self.abstract
+        if self.published_doi:
+            self.preprint.doi = self.published_doi
+
+        if current_version is not None:
+            current_version.save()
+        self.preprint.save()
+        self.save()
+
+    def decline(self):
+        self.date_decision = timezone.now()
+        self.approved = False
+        self.save()
+
+    def decision(self):
+        if self.date_decision and self.approved:
+            return True
+        elif self.date_decision:
+            return False
+
+    def status(self):
+        if self.date_decision and self.approved:
+            return _("Approved")
+        elif not self.date_decision:
+            return _("Under Review")
+        else:
+            return _("Declined")
+
+    @property
+    def safe_title(self):
+        if self.title:
+            return mark_safe(self.title)
+        else:
+            return "[Untitled]"
+
+
+def review_status_choices():
+    return (
+        ("new", "New"),
+        ("accepted", "Accepted"),
+        ("declined", "Declined"),
+        ("complete", "Complete"),
+        ("withdrawn", "Withdrawn"),
+    )
+
+
+class ReviewRecommendation(models.Model):
+    repository = models.ForeignKey(
+        "Repository",
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(
+        max_length=255,
+    )
+    active = models.BooleanField(
+        default=True,
+    )
+
+    def __str__(self):
+        return self.name
+
+
+class Review(models.Model):
+    preprint = models.ForeignKey(
+        "Preprint",
+        on_delete=models.CASCADE,
+    )
+    manager = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="review_manager",
+        help_text="The manager making the review request.",
+    )
+    reviewer = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="review_reviewer",
+    )
+    date_assigned = models.DateTimeField(
+        blank=True,
+        null=True,
+        auto_now_add=True,
+    )
+    date_due = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name="Due date",
+    )
+    date_accepted = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+    date_completed = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=review_status_choices(),
+    )
+    access_code = models.UUIDField(
+        default=uuid.uuid4,
+    )
+    comment = models.OneToOneField(
+        "Comment",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    anonymous = models.BooleanField(
+        default=False,
+    )
+    status_reason = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="Information supplied by a reviewer when declining or completing "
+        "a review or by staff withdrawing a review",
+    )
+    notification_sent = models.BooleanField(
+        default=False,
+    )
+    recommendation = models.ForeignKey(
+        "ReviewRecommendation",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+
+    def accept(self, request):
+        self.date_accepted = timezone.now()
+        self.status = "accepted"
+        self.save()
+
+        # Raise event
+        event_logic.Events.raise_event(
+            event_logic.Events.ON_PREPRINT_REVIEW_STATUS_CHANGE,
+            **{
+                "request": request,
+                "review": self,
+                "status_change": "accept",
+            },
+        )
+
+    def decline(self, request):
+        self.date_completed = timezone.now()
+        self.status = "declined"
+        self.save()
+
+        # Raise event
+        event_logic.Events.raise_event(
+            event_logic.Events.ON_PREPRINT_REVIEW_STATUS_CHANGE,
+            **{
+                "request": request,
+                "review": self,
+                "status_change": "decline",
+            },
+        )
+
+    def complete(self, request):
+        self.date_completed = timezone.now()
+        self.status = "complete"
+        self.save()
+
+        # Raise event
+        event_logic.Events.raise_event(
+            event_logic.Events.ON_PREPRINT_REVIEW_STATUS_CHANGE,
+            **{
+                "request": request,
+                "review": self,
+                "status_change": "complete",
+            },
+        )
+
+    def withdraw(self, reason, request):
+        self.date_completed = timezone.now()
+        self.status = "withdrawn"
+        self.status_reason = reason
+        self.save()
+
+        # Raise event
+        event_logic.Events.raise_event(
+            event_logic.Events.ON_PREPRINT_REVIEW_STATUS_CHANGE,
+            **{
+                "request": request,
+                "review": self,
+                "status_change": "withdraw",
+            },
+        )
+
+    def reset(self, user):
+        self.date_accepted = None
+        self.date_completed = None
+        self.status = "new"
+        self.status_reason = "Invited Review reset by staff."
+        self.save()
+
+        utils_models.LogEntry.add_entry(
+            types="Preprint Review",
+            description="Preprint Review by {} reset".format(self.reviewer.full_name()),
+            level="Info",
+            actor=user,
+            target=self.preprint,
+        )
+
+    def publish(self, user=None):
+        if self.comment:
+            self.comment.is_reviewed = True
+            self.comment.is_public = True
+            self.comment.save()
+
+            utils_models.LogEntry.add_entry(
+                types="Preprint Review",
+                description="Preprint Review by {} published".format(
+                    self.reviewer.full_name()
+                ),
+                level="Info",
+                actor=user,
+                target=self.preprint,
+            )
+
+    def unpublish(self, user):
+        if self.comment:
+            self.comment.is_public = False
+            self.comment.save()
+
+            utils_models.LogEntry.add_entry(
+                types="Preprint Review",
+                description="Preprint Review by {} unpublished".format(
+                    self.reviewer.full_name()
+                ),
+                level="Info",
+                actor=user,
+                target=self.preprint,
+            )
+
+
+@receiver(models.signals.post_delete, sender=PreprintFile)
+def auto_delete_file_on_delete(sender, instance, **kwargs):
+    """
+    Deletes file from filesystem
+    when corresponding `PreprintFile` object is deleted.
+    """
+    if instance.file:
+        if os.path.isfile(instance.file.path):
+            try:
+                os.remove(instance.file.path)
+            except FileNotFoundError:
+                pass
+
+
+@receiver(models.signals.pre_save, sender=PreprintFile)
+def auto_delete_file_on_change(sender, instance, **kwargs):
+    """
+    Deletes old file from filesystem
+    when corresponding `PreprintFile` object is updated
+    with new file.
+    """
+    if not instance.pk:
+        return False
+
+    try:
+        old_file = PreprintFile.objects.get(pk=instance.pk).file
+    except PreprintFile.DoesNotExist:
+        return False
+
+    new_file = instance.file
+    if not old_file == new_file:
+        if os.path.isfile(old_file.path):
+            os.remove(old_file.path)
+
+
+@receiver(models.signals.pre_save, sender=Repository)
+def add_email_setting_defaults(sender, instance, **kwargs):
+    """
+    When a new Repository is added we insert the email settings onto the
+    instance before it is saved.
+    """
+    if instance._state.adding:
+        install.load_settings(instance)
+
+        with open(
+            os.path.join(
+                settings.BASE_DIR,
+                "utils",
+                "install",
+                "default_repository_review_recommendations.json",
+            )
+        ) as defaults_file:
+            defaults = json.load(defaults_file)
+            for repo in Repository.objects.all():
+                for default in defaults:
+                    ReviewRecommendation.objects.get_or_create(
+                        repository=repo,
+                        name=default,
+                    )
+
+
+@receiver(models.signals.post_save, sender=PreprintFile)
+def update_preprint_file_index(sender, instance, created, **kwargs):
+    """Updates file indexes in the DB"""
+    if not instance.pk or not instance.file:
+        return
+
+    instance.index_full_text()

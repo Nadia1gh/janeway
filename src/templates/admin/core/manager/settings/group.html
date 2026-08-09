@@ -1,0 +1,71 @@
+{% extends "admin/core/base.html" %}
+{% load foundation %}
+{% load static %}
+
+{% block title %}{{ group|capfirst }} Settings{% endblock title %}
+{% block title-section %}{{ group|capfirst }} Settings{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li>{{ group|capfirst }} Settings</li>
+{% endblock %}
+
+{% block body %}
+    <section class="group-settings">
+        <div class="row expanded">
+            <div class="large-12 columns">
+                <div class="box">
+                    {% if display_tabs %}
+                        {% include "admin/elements/translations/form_tabs.html" with object=request.journal %}
+                    {% endif %}
+                    {% include "admin/elements/forms/errors.html" with form=edit_form %}
+                    {% include "admin/elements/forms/errors.html" with form=attr_form %}
+
+                    {% if group == 'images' %}
+                        {% include "admin/elements/forms/group_journal_images.html" with attr_form=attr_form %}
+                    {% else %}
+                        <form action="" method="POST" enctype="multipart/form-data">
+
+                            {% csrf_token %}
+
+                            {% if group == 'journal' %}
+                                {% include "admin/elements/forms/group_journal.html" with form=attr_form %}
+                            {% elif group == 'submission' %}
+                                {% include "admin/elements/forms/group_submission.html" %}
+                            {% elif group == 'styling' %}
+                                {% include "admin/elements/forms/group_styling.html" %}
+                            {% elif group == 'article' %}
+                                {% include "admin/elements/forms/group_article.html" %}
+                            {% elif group == 'review' %}
+                                {% include "admin/elements/forms/group_review.html" %}
+                            {% elif group == 'news' %}
+                                {% include "admin/elements/forms/group_journal_news.html" with form=edit_form %}
+                            {% elif group == 'support' %}
+                            {% else %}
+                                {% include "admin/elements/forms/submission.html" with form=edit_form %}
+                            {% endif %}
+
+                            <button type="submit" class="button success">
+                                Submit
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock body %}
+
+{% block js %}
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+    <script type="text/javascript" src="{% static "common/js/jq-ui.min.js" %}"></script>
+    <script src="{% static "common/js/tagit.js" %}"></script>
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $("#id_keywords").tagit(
+                {allowSpaces: true});
+        });
+    </script>
+{% endblock %}

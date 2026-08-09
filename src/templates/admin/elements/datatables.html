@@ -1,0 +1,21 @@
+<link rel="stylesheet" type="text/css" href="//cdn.datatables.net/plug-ins/505bef35b56/integration/foundation/dataTables.foundation.css">
+<script type="text/javascript" language="javascript" src="//cdn.datatables.net/1.10.7/js/jquery.dataTables.min.js"></script>
+<script type="text/javascript" language="javascript" src="//cdn.datatables.net/plug-ins/505bef35b56/integration/foundation/dataTables.foundation.js"></script>
+
+<script type="text/javascript">
+
+$(document).ready(function() {
+  '{{ target }}'.split(' ').forEach(target => {
+    $(target).DataTable({
+      "lengthMenu": [[25, 50, 10, 5, -1], [25, 50, 10, 5, "All"]],
+      {% if hide_length %}"bLengthChange": false,{% endif %}
+      {% if hide_page %}"bPaginate": false,{% endif %}
+      {% if sort and order %}"order": [[ {{ sort }}, "{{ order }}" ]],{% endif %}
+      {% if sort_list %}"order": [{{ sort_list }}],{% endif %}
+      {% if disable_ordering %}"ordering": false,{% endif %}
+      {% if page_length %}"pageLength": {{ page_length }},{% endif %}
+    });
+  });
+});
+
+</script>

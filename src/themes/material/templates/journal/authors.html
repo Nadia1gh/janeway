@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Authors" %}{% endblock title %}
+{% block page_title %}{% trans "Authors" %}{% endblock page_title %}
+
+{% block body %}
+
+    <h1>{% trans "Authors" %}</h1>
+    <div class="row">
+       
+        {% for author in author_list %}
+
+            <div class="col s12 m3">
+                <div class="card editorial-card">
+                    <div class="card-image">
+                         <img src="{% if author.profile_image %}{{ author.profile_image.url }}{% else %}{% static "common/img/icons/users.png" %}{% endif %}"
+                         alt="{% trans 'Author profile image.' %}">
+                    </div>
+                    <div class="card-content" style="min-height: 190px;">
+                         <h2 id="author-{{ author.uuid }}" class="card-title small-card-title">{{ author.full_name }}</h2>
+                        <p>
+                            <small>{{ author.affiliation }}</small>
+                        </p>
+
+                        {% if author.enable_public_profile %}
+
+                            <p>
+                                <small>
+                                    <a href="{% url 'core_public_profile' author.uuid %}"
+                                        aria-describedby="author-{{ author.uuid }}"
+                                        >
+                                        {% trans "View Profile" %}
+                                    </a>
+                                </small>
+                            </p>
+
+                        {% endif %}
+                        {% include "elements/journal/editorial_social_content.html" with user=author %}
+                    </div>
+                </div>
+            </div>
+                       
+        {% endfor %}
+
+    </div>
+
+{% endblock body %}

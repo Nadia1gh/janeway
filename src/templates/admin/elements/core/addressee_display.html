@@ -1,0 +1,13 @@
+{% load securitytags %}
+{% regroup entry.addressees by get_field_display as email_fields %}
+{% for field, addressees in email_fields %}
+    {% if field %}<strong>{{ field }}: </strong>{% endif %}
+    {% for addressee in addressees %}
+        {% if article %}
+            {{ addressee.email|se_can_see_pii:article }}{% if not forloop.last %}, {% endif %}
+        {% else %}
+           {{ addressee.email }}{% if not forloop.last %}, {% endif %}
+       {% endif %}
+    {% endfor %}
+    {% if not forloop.last %}<br>{% endif %}
+{% endfor %}

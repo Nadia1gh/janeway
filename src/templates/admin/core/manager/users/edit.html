@@ -1,0 +1,90 @@
+{% extends "admin/core/flat_base.html" %}
+{% load static %}
+{% load foundation %}
+
+{% block contextual_title %}
+  {% if active == 'add' %}
+    Add new user
+  {% else %}
+    Edit user "{{ user_to_edit.full_name }}"
+  {% endif %}
+{% endblock contextual_title %}
+
+{% block css %}
+  <link type='text/css' href="{% static "common/css/jq-ui.css" %}" rel="stylesheet">
+{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li><a href="{% url 'core_manager_users' %}">Users</a></li>
+    <li>
+      {% if active == 'add' %}
+        Add new user
+      {% else %}
+        Edit user "{{ user_to_edit.full_name }}"
+      {% endif %}
+    </li>
+{% endblock %}
+
+{% block title-section %}
+  {% if active == 'add' %}
+    Add new user
+  {% else %}
+    Edit user "{{ user_to_edit.full_name }}"
+  {% endif %}
+{% endblock %}
+
+{% block body %}
+  <div class="large-12 columns end">
+    <form method="post" class="form" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="box margin-block-end-10 max-w-56">
+        <div class="title-area">
+          <h2>{% trans "Email and account access" %}</h2>
+        </div>
+        <div class="content">
+          {% include "admin/elements/forms/messages_in_callout.html" with form=registration_form %}
+          <div class="flex wrap column-gap-2">
+            {% include "elements/forms/field.html" with field=registration_form.email %}
+            {% include "elements/forms/field.html" with field=registration_form.is_active %}
+            {% include "elements/forms/field.html" with field=registration_form.is_staff %}
+            {% include "elements/forms/field.html" with field=registration_form.is_admin %}
+            {% include "elements/forms/field.html" with field=registration_form.is_superuser %}
+            {% if active == 'add' %}
+              {% include "elements/forms/field.html" with field=registration_form.password_1 %}
+              {% include "elements/forms/field.html" with field=registration_form.password_2 %}
+            {% endif %}
+          </div>
+        </div>
+        <div class="title-area">
+          <h2>{% trans "Profile details" %}</h2>
+        </div>
+        <div class="content">
+          {% include "admin/elements/forms/messages_in_callout.html" with form=form %}
+          {% include "admin/elements/accounts/user_form.html" with form=form %}
+          <div class="padding-block-0-5">
+            <div class="button-group">
+              {% include "elements/button_save.html" %}
+              {% include "elements/a_cancel.html" with href=request.GET.next %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+{% endblock %}
+
+{% block js %}
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+<script type="text/javascript" src="{% static "common/js/jq-ui.min.js" %}"></script>
+<script src="{% static "common/js/tagit.js" %}"></script>
+
+<script type="text/javascript">
+  $(document).ready(function() {
+      $("#id_interests").tagit(
+        {allowSpaces: true});
+  });
+</script>
+{% endblock %}

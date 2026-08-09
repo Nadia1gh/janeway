@@ -1,0 +1,17 @@
+<div class="carousel-item white-text material-banner" href="#four!">
+  <img class="material-banner-image"
+    src="{{ carousel_item.best_large_image_url }}"
+    alt="{{ carousel_item.best_large_image_alt_text }}">
+  {% if carousel_item.carousel_title %}
+    <div class="material-banner-heading">
+      <div class="carousel-text-wrapper">
+        <a href="{{ carousel_item.url }}">
+            <h2>{{ carousel_item.carousel_title|truncatechars_html:200|safe }}</h2>
+          {% if carousel_item.carousel_subtitle %}
+            <p>{{ carousel_item.carousel_subtitle|safe }}</p>
+          {% endif %}
+        </a>
+      </div>
+    </div>
+  {% endif %}
+</div>

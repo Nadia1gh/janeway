@@ -1,0 +1,167 @@
+{% extends "admin/core/base.html" %}
+{% load foundation %}
+{% block title %}Add Review Assignment{% endblock title %}
+{% block title-section %}Add Review Assignment{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub_pii.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/review_base.html" with subpage="yes" %}
+    <li>Add Review Assignment</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+    <div class="large-12 columns">
+        <form id="review_assignment_form" method="POST">
+            {% include "elements/forms/errors.html" with form=form %}
+            {% csrf_token %}
+            <div class="box">
+                <div class="title-area">
+                    <h2>1. Select Reviewer</h2>
+                        <a href="{% if journal_settings.general.enable_one_click_access %}#{% else %}{% url 'core_add_user' %}?role=reviewer&return={{ request.path }}{% endif %}" class="button" data-open="reviewer"><i class="fa fa-plus">&nbsp;</i>Add New Reviewer</a>
+                        <a href="{% url 'core_manager_enrol_users' %}" class="button" target="_blank"><i class="fa fa-users">&nbsp;</i>Enroll Existing User</a>
+                </div>
+                <div class="content">
+                    <div class="callout primary">
+                        <p> <span class="fa fa-info-circle"></span>
+                            {% blocktrans %}
+                                You can select a reviewer using the radio
+                                buttons in the first column and complete the
+                                section under 'Set Options'.
+                                If you cannot find the reviewer you want in
+                                this list you can use 'Enroll Existing User' to
+                                search the database and give users the Reviewer
+                                role, or 'Add New Reviewer' to create a new
+                                account for a reviewer (this process is silent,
+                                so they will not receive an account creation
+                                email).
+                            {% endblocktrans %}
+                        </p>
+                        <p>
+                            Reviewers who have completed a review for this
+                            article in a previous round will appear at the top
+                            of this list and will show 'Yes' in the 'Has
+                            Reviewed Article' column.
+                        </p>
+                    </div>
+
+                    <table class="small scroll" id="reviewers">
+                        <thead>
+                        <tr>
+                            <th>Select</th>
+                            <th>Name</th>
+                            <th>Email Address</th>
+                            <th>Active Reviews</th>
+                            <th width="30%">Interests</th>
+                            <th>Average Score</th>
+                            <th>Last Review Completed</th>
+                            <th>Has Reviewed Article</th>
+                            {% if journal_settings.general.enable_suggested_reviewers %}<th>Suggested Reviewer</th>{% endif %}
+                            <th>History</th>
+                        </tr>
+                        </thead>
+
+                        <tbody>
+                        {% for reviewer in reviewers %}
+                            <tr>
+                                {% include "admin/elements/review/add_reviewer_table_row.html" with reviewer=reviewer %}
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="10">No suitable reviewers.</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="title-area">
+                    <h2>2. Set Options</h2>
+                </div>
+                <div class="content">
+                    <div class="row expanded">
+                        <div class="large-4 columns">{{ form.form|foundation }}</div>
+                        <div class="large-4 columns">{{ form.visibility|foundation }}</div>
+                        <div class="large-4 columns">{{ form.date_due|foundation }}</div>
+                    <div class="row expanded">
+                        <div class="large-12 columns">
+                            <button class="button success" name="{{ form.CONFIRMABLE_BUTTON_NAME }}" type="submit">Add Reviewer</button>
+                            &nbsp;
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>        &nbsp;&nbsp;
+        </form>
+    </div>
+
+    {% if journal_settings.general.enable_one_click_access %}
+    <div class="reveal large" id="reviewer" data-reveal data-animation-in="slide-in-up"
+     data-animation-out="slide-out-down">
+        <div class="card">
+            <div class="card-divider">
+                <h4><i class="fa fa-plus">&nbsp;</i>Add New Reviewer</h4>
+            </div>
+            <div class="card-section">
+                <button class="close-button" data-close aria-label="Close reveal" type="button">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                <div class="content">
+                    <p>This form allows you to quickly create a new reviewer without having to input a full user's data.</p>
+                    <form method="POST">
+                        {% include "elements/forms/errors.html" with form=new_reviewer_form %}
+                        {% csrf_token %}
+                        {{ new_reviewer_form|foundation }}
+                        <button type="submit" class="button success" name="assign" id="assign">Add Reviewer</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if form.modal %}
+        {% include "admin/elements/confirm_modal.html" with modal=form.modal form_id="review_assignment_form" %}
+    {% endif %}
+
+{% endblock body %}
+
+{% block js %}
+    {% if journal_settings.general.enable_suggested_reviewers %}
+        {% include "elements/datatables.html" with target="#reviewers" sort_list="[7, 'desc'], [8, 'desc']" %}
+    {% else %}
+        {% include "elements/datatables.html" with target="#reviewers" sort_list="[7, 'desc']" %}
+    {% endif %}
+    {% if form.modal %}
+        {% include "admin/elements/open_modal.html" with target=form.modal.id %}
+    {% endif %}
+
+    <script lang="javascript">
+    function getQueryStrings()
+    {
+        let vars = [], hash;
+        let hashes = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');
+        for(let i = 0; i < hashes.length; i++)
+        {
+            hash = hashes[i].split('=');
+            vars.push(hash[0]);
+            vars[hash[0]] = hash[1].split('#')[0];
+        }
+        return vars;
+    }
+
+    // populate the query box when ready
+    $( document ).ready(function() {
+        let urls = getQueryStrings();
+        let user = urls["user"];
+        let user_id = urls["id"];
+
+        if (user !== '') {
+            $('#reviewers').DataTable().search(decodeURIComponent(user)).draw();
+
+            if (user_id !== '') {
+                $("input[value=" + decodeURIComponent(user_id) + "]").attr('checked', 'checked');
+            }
+        }
+    });
+    </script>
+{% endblock js %}

@@ -1,0 +1,43 @@
+
+<div class="card">
+    <div class="card-divider">
+        <h4>
+        {% if task.assignment %}
+            {{ task.assignment.article.safe_title }}
+        {% else %}
+            {{ task.proofing_task.assignment.article.safe_title }}
+        {% endif %}
+        </h4>
+    </div>
+    <div class="card-section">
+        <p><small>Task ID: {{ task.pk }}<br />
+            Article ID: {{ task.proofing_task.round.assignment.article.pk }}</small></p>
+
+        {% if type == "assignment" %}
+            <p>Status: Awaiting your decision.</p>
+        {% elif type == "assigned" %}
+            <p>Status: Correction in progress.</p>
+        {% else %}
+            <p>Status: Correction complete.</p>
+        {% endif %}
+
+        <div class="button-group">
+            {% if type == "assignment" %}
+                <form method="POST">
+                    {% csrf_token %}
+                    <input type="hidden" name="typeset_task_id" value="{{ task.pk }}">
+                    <button name="decision" value="accept" class="button tiny success">Accept</button>
+                    <button name="decision" value="decline" class="button tiny">Decline</button>
+                </form>
+            {% elif type == 'assigned' %}
+               <a class="button tiny success" href="{% url 'typesetting_corrections' task.pk %}">View Task</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-divider">
+        {% if task.proofing_task.assignment.proofing_manager %}
+        {% include "elements/avatar.html" with user=task.proofing_task.assignment.proofing_manager role="PM" %}
+        {% endif %}
+        {% include "elements/avatar.html" with user=task.proofing_task.assignment.article.correspondence_author role="Author" %}
+    </div>
+</div>

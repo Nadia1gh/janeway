@@ -1,0 +1,54 @@
+{% extends "admin/core/base.html" %}
+
+
+{% block title %}Settings{% endblock title %}
+{% block title-section %}All Settings{% endblock %}
+{% block title-sub %}A list of all available settings for a given journal.{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li>Settings</li>
+{% endblock %}
+
+{% block body %}
+    <section>
+        <div class="box">
+            <div class="content">
+            <p>You can filter the settings by using the search box. It will filter across all rows. Plugin settings will be prefixed by "Plugin:"</p>
+            <table id="settings" class="table">
+                <thead>
+                <tr>
+                    <th>Setting Name</th>
+                    <th>Setting Code</th>
+                    <th>Setting Group</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for setting in settings %}
+                    <tr>
+                        <td>
+                            <a
+                                    {% if request.journal %}
+                               href="{% url 'core_edit_setting' setting.group.name setting.name %}"
+                                    {% else %}
+                               href="{% url 'core_edit_default_setting' setting.group.name setting.name %}"
+                                    {% endif %}
+                            >
+                                {{ setting.pretty_name }}
+                            </a>
+                        </td>
+                        <td>{{ setting.name }}</td>
+                        <td>{{ setting.group.name|capfirst }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </section>
+{% endblock body %}
+
+{% block js %}
+    {% include "admin/elements/datatables.html" with target="#settings" sort=2 order="asc" page_length=15 %}
+{% endblock js %}

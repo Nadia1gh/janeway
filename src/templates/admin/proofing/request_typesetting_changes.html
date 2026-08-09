@@ -1,0 +1,169 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+{% load securitytags %}
+{% load foundation %}
+
+{% block css %}
+    <link href="{% static "common/css/jquery-te-1.4.0.css" %}" rel="stylesheet">{% endblock %}
+
+{% block title %}Request Corrections{% endblock title %}
+{% block title-section %}Request Corrections{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/proofing_manager_base.html" with subpage="yes" %}
+    <li>Request Corrections</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+    <form method="POST">
+        <div class="large-12 columns box">
+            <div class="title-area">
+                <h2>Request Corrections</h2>
+                <a href="?comments=true" class="button">Import Comments</a>
+            </div>
+            <div class="content">
+
+                <p>Based on the feedback from your proofreaders, you can request that the typesetter make some changes.
+                    You can supply them with a note of what is required.</p>
+
+                {% csrf_token %}
+                {% include "elements/forms/errors.html" with form=form %}
+                <div class="row expanded">
+                    <div class="large-8 columns">
+                        {{ form.task|foundation }}
+                        {{ form.due|foundation }}
+                        {{ form.include_comments|foundation }}
+                        <div class="row">
+                            <div class="large-12 columns">
+                                <h4>Comments to be Included</h4>
+                                {{ comments|safe }}
+                                <br /><br />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="title-area">
+                <h2>Proofed Galleys</h2>
+            </div>
+            <div class="content">
+                <p>Select which Galleys the typesetter should update.</p>
+                <table class="small scroll">
+                    <tr style="text-align: left">
+                        <th></th>
+                        <th>Label</th>
+                        <th>Modified</th>
+                        <th width="25%">Filename</th>
+                        <th>Type</th>
+                        <th>Download</th>
+                        <th>History</th>
+                    </tr>
+                    {% for galley in article.galley_set.all %}
+                        {% can_view_file galley.file as can_view_file_flag %}
+                        {% can_view_file_history galley.file article as can_view_file_history_flag %}
+                        <tr>
+                            <td><input type="checkbox" name="galleys_for_proofing" value="{{ galley.id }}"
+                                       {% if galley in galleys %}checked="checked"{% endif %}></td>
+                            <td>{{ galley.label }}</td>
+                            <td>{{ file.last_modified|date:"Y-m-d G:i" }}</td>
+                            <td>{{ galley.file.original_filename|truncatechars:40 }}</td>
+                            <td>Galley {% if galley in proofing_task.galleys_for_proofing.all %}(Proofed){% else %}(Not Proofed){% endif %}</td>
+                            <td>{% if can_view_file_flag %}
+                                <a href="{% url 'article_file_download' 'id' article.pk galley.file.pk %}"><i
+                                        class="fa fa-download">&nbsp;</i></a>{% endif %}
+                            </td>
+                            <td>{% if can_view_file_history_flag %}
+                                <a href="{% url 'file_history' article.pk galley.file.pk %}?return={{ request.path|urlencode }}"><i
+                                        class="fa fa-history">
+                                    &nbsp;</i></a>{% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+                <div class="title-area">
+                <h2>Files</h2>
+            </div>
+            <div class="content">
+                <p>Select files that the typesetter may need.</p>
+                <table class="small scroll">
+                    <tr style="text-align: left">
+                        <th></th>
+                        <th>Label</th>
+                        <th>Modified</th>
+                        <th width="25%">Filename</th>
+                        <th>Type</th>
+                        <th>Download</th>
+                        <th>History</th>
+                    </tr>
+                    {% for file in proofing_task.proofed_files.all %}
+                        {% can_view_file file as can_view_file_flag %}
+                        {% can_view_file_history file article as can_view_file_history_flag %}
+                        <tr>
+                            <td><input type="checkbox" name="files_for_proofing" value="{{ file.id }}"
+                                       {% if galley in galleys %}checked="checked"{% endif %}></td>
+                            <td>{{ file.label }}</td>
+                            <td>{{ file.original_filename|truncatechars:40 }}</td>
+                            <td>{{ file.last_modified|date:"Y-m-d G:i" }}</td>
+                            <td>Proofing</td>
+                            <td>{% if can_view_file_flag %}
+                                <a href="{% url 'article_file_download' 'id' article.pk file.pk %}"><i
+                                        class="fa fa-download">&nbsp;</i></a>{% endif %}
+                            </td>
+                            <td>{% if can_view_file_history_flag %}
+                                <a href="{% url 'file_history' article.pk file.pk %}?return={{ request.path|urlencode }}"><i
+                                        class="fa fa-history">
+                                    &nbsp;</i></a>{% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            <div class="title-area">
+                <h2>Select a Typesetter</h2>
+            </div>
+            <div class="content">
+                <table class="scroll small" id="typesetters">
+                    <thead>
+                    <tr>
+                        <th>Select</th>
+                        <th>Name</th>
+                        <th>Email Address</th>
+                        <th>Active Typesetting Tasks</th>
+                    </tr>
+                    </thead>
+
+                    <tbody>
+                    {% for typesetter_role in typesetters %}
+                        <tr>
+                            <td><input type="radio" name="proofreader" value="{{ typesetter_role.user.id }}"
+                                       {% if user.pk == typesetter_role.user.id %}checked="checked"{% endif %}></td>
+                            <td>{{ typesetter_role.user.full_name }}</td>
+                            <td>{{ typesetter_role.user.email }}</td>
+                            <td>{{ typesetter_role.user.active_typesets|length }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td>No suitable typesetters.</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+
+                <button type="submit" class="button success" name="send"><i class="fa fa-arrow-right">&nbsp;</i>Submit
+                </button>
+            </div>
+        </div>
+    </form>
+
+{% endblock body %}
+
+{% block js %}
+    {% include "elements/jqte.html" %}
+    {% include "elements/datepicker.html" with target="#id_due" %}
+{% endblock js %}

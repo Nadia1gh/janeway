@@ -1,0 +1,23 @@
+{# Not used #}
+
+{% if item.has_sub_nav %}
+    <li>
+        <a
+            class="dropdown-trigger"
+            href="#!"
+            data-target="sub_nav_content">
+            {{ item.link_name }}
+            <i aria-hidden="true" class="fa fa-caret-down right" ></i>
+        </a>
+    </li>
+{% elif not item.for_footer %}
+    <li><a href="/{{ item.link }}">{{ item.link_name }}</a></li>
+{% endif %}
+
+{% if item.has_sub_nav %}
+    <ul id="sub_nav_content" class="dropdown-content">
+        {% for subnav in item.sub_nav_items %}
+            <li><a href="{{ subnav.link }}">{{ subnav.link_name }}</a></li>
+        {% endfor %}
+    </ul>
+{% endif %}

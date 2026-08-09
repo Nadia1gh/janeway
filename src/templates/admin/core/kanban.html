@@ -1,0 +1,77 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+
+{% load article %}
+{% load dict %}
+
+<!-- NOTE: this page is deprecated for now. Doing the task/event wireup was deemed too massive a task for v1-->
+
+{% block page_title %}Kanban Board{% endblock page_title %}
+
+{% block body %}
+
+    <div class="row expanded column">
+        <div class="kanban">
+            <div class="inner">
+
+                {% for element in workflow.elements.all %}
+                    <div class="box">
+                        <div class="title-area">
+                            <h2>{{ element.element_name }}</h2>
+                        </div>
+                        <div class="content">
+                            {% if element.element_name == 'review' %}
+                                {% for article in unassigned_articles %}
+                                    {% include "admin/elements/core/kanban/card.html" with article=article type='unassigned' %}
+                                {% endfor %}
+                                {% for article in in_review %}
+                                    {% include "admin/elements/core/kanban/card.html" with article=article type='assigned' %}
+                                {% endfor %}
+
+                            {% elif element.element_name == 'copyediting' %}
+                                {% for article in copyediting %}
+                                    {% include "admin/elements/core/kanban/card.html" with article=article type='copyedit' %}
+                                {% endfor %}
+
+                            {% elif element.element_name == 'typesetting' %}
+                                {% for article in typesetting %}
+                                    {% include "typesetting/elements/card.html" with article=article type='typesetting' %}
+                                {% endfor %}
+
+                            {% elif element.element_name == 'production' %}
+                                {% for article in production %}
+                                    {% include "admin/elements/core/kanban/card.html" with article=article type='production' production_assigned=production_assigned %}
+                                {% endfor %}
+
+                            {% elif element.element_name == 'proofing' %}
+                                {% for article in proofing %}
+                                    {% include "admin/elements/core/kanban/card.html" with article=article type='proof' proofing_assigned=proofing_assigned %}
+                                {% endfor %}
+
+                            {% elif element.element_name == 'prepublication' %}
+                                {% for article in prepubs %}
+                                    {% include "admin/elements/core/kanban/card.html" with article=article type='prepublication' %}
+                                {% endfor %}
+
+                            {% else %}
+                                {% tag_get articles_in_workflow_plugins element.element_name as element_dict %}
+
+                                {% for article in element_dict.articles %}
+                                    {% include element_dict.template %}
+                                {% endfor %}
+                            {% endif %}
+
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+{% endblock body %}
+
+{% block js %}
+    <script>
+        kanbanInit();
+    </script>
+{% endblock js %}

@@ -1,0 +1,133 @@
+{% extends "admin/core/base.html" %}
+{% load securitytags %}
+
+{% block title %}Add Review Files{% endblock title %}
+{% block title-section %}Add Files{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub_pii.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/review_base.html" with subpage="yes" %}
+    <li>Add Files</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+
+    <div class="large-12 columns">
+        <div class="box">
+            <div class="content float-right">
+                <a href="#" class="success button" data-open="upload_file">
+                    <span class="fa fa-upload" aria-hidden="true"> Upload File</span>
+                </a>
+            </div>
+            <div class="title-area">
+                <h2>Files</h2>
+            </div>
+            <div class="content">
+                <form method="POST">
+                    {% csrf_token %}
+                    <table class="table scroll small fixed-table" id="files">
+                        <thead>
+                        <tr>
+                            <th>Select</th>
+                            <th>ID</th>
+                            <th>Label</th>
+                            <th>Filename</th>
+                            <th>Type</th>
+                            <th>Uploaded</th>
+                            <th>Download</th>
+                            <th>History</th>
+                            <th>Replace</th>
+                        </tr>
+                        </thead>
+                        {% for file in article.manuscript_files.all %}
+                        {% can_view_file_history file article as can_view_file_history_flag %}
+                            <tbody>
+                            <tr>
+                                <td><input type="checkbox" name="file" value="{{ file.id }}"
+                                           {% if file in round.review_files.all %}checked="checked"{% endif %}></td>
+                                <td>{{ file.pk }}</td>
+                                <td class="dont-break-out">{{ file.label }}</td>
+                                <td class="dont-break-out">{{ file.original_filename }}</td>
+                                <td>Manuscript</td>
+                                <td>{{ file.date_uploaded|date:"Y-m-d G:i" }}</td>
+                                <td><a href="{% url 'editor_file_download' article.id file.id %}"><i
+                                        class="fa fa-download">&nbsp;</i></a></td>
+                                <td>{% if can_view_file_history_flag %}
+                                    <a href="{% url 'file_history' article.pk file.pk %}?return={{ request.path|urlencode }}"><i
+                                            class="fa fa-history">
+                                        &nbsp;</i></a>{% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'article_file_replace' 'id' article.pk file.pk %}?return={{ request.path }}"><i
+                                            class="fa fa-cloud-upload">&nbsp;</i></a></td>
+
+                            </tr>
+                        {% endfor %}
+                        {% for file in article.data_figure_files.all %}
+                        {% can_view_file_history file article as can_view_file_history_flag %}
+                            <tr>
+                                <td><input type="checkbox" name="file" value="{{ file.id }}"
+                                           {% if file in round.review_files.all %}checked="checked"{% endif %}></td>
+                                <td>{{ file.pk }}</td>
+                                <td>{{ file.label }}</td>
+                                <td>{{ file.original_filename }}</td>
+                                <td>Data/Figure</td>
+                                <td>{{ file.date_uploaded|date:"Y-m-d G:i" }}</td>
+                                <td><a href="{% url 'editor_file_download' article.id file.id %}"><i
+                                        class="fa fa-download">&nbsp;</i></a></td>
+                                <td>{% if can_view_file_history_flag %}
+                                    <a href="{% url 'file_history' article.pk file.pk %}?return={{ request.path|urlencode }}"><i
+                                            class="fa fa-history">
+                                        &nbsp;</i></a>{% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'article_file_replace' 'id' article.pk file.pk %}?return={{ request.path }}"><i
+                                            class="fa fa-cloud-upload">&nbsp;</i></a></td>
+
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+
+                    {% if journal_settings.general.default_review_visibility == 'double-blind' or journal_settings.general.default_review_visibility == 'blind' %}
+                    {{ journal_settings.general.review_file_help|safe }}
+
+                    <input type="checkbox" id="anon" required>
+                    <label for="anon">Review files have been anonymised or this paper is not being reviewed in single anonymous or double-anonymous peer review.</label>
+                    <br />
+                    {% endif %}
+
+                    <button class="button success" type="submit">Select Files for Review</button>
+                    <a href="{% url 'review_in_review' article.pk %}" class="button alert" type="submit">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="reveal small" id="upload_file" data-reveal data-animation-in="slide-in-up"
+         data-animation-out="slide-out-down">
+        <div class="card">
+            <div class="card-divider">
+                <h4><i class="fa fa-upload">&nbsp;</i>Upload Files</h4>
+            </div>
+            <div class="card-section">
+                <p>If you want to upload a file for review that isn't already linked to this article, you can do so here. Note, if you simply want to
+                anonymise the existing manuscript, use the "Replace" button in the table.</p>
+                <form method="POST" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="file" name="review_file">
+                    <button name="upload" class="success button"><i class="fa fa-upload">&nbsp;</i>Upload File</button>
+                </form>
+            </div>
+        </div>
+        <button class="close-button" data-close aria-label="Close modal" type="button">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+
+{% endblock body %}
+
+{% block js %}
+    {% include "elements/datatables.html" with target="#files" %}
+{% endblock js %}

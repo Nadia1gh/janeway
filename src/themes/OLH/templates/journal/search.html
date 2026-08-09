@@ -1,0 +1,59 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load i18n %}
+{% load hooks %}
+
+{% hook 'filter_search' %}
+
+{% block title %}{% trans "Search" %}{% endblock %}
+
+{% block css %}
+{% endblock %}
+
+{% block body %}
+
+
+
+    <section id="content">
+
+        <div class="row">
+            {% if search_term %}
+                <h1>{% trans 'Searching for' %}: <i>{{ search_term }}</i></h1>
+            {% elif keyword %}
+                <h1>{% trans 'Keyword' %}: <i>{{ keyword }}</i></h1>
+            {% else %}
+                <h1>{% trans 'All Articles' %}</h1>
+            {% endif %}
+            <div class="hide-for-large columns">
+                {% include "elements/journal/search_form.html" %}
+            </div>
+            <div class="large-8 columns border-right">
+                <h2>{% trans "Articles" %}</h2>
+
+                {% for article in articles %}
+                    {% include "elements/journal/box_article.html" with article=article level="shallow" %}
+                {% endfor %}
+
+            </div>
+            <aside class="large-4 columns show-for-large" data-sticky-container>
+                <div class="sticky" data-sticky data-margin-top="0" data-sticky data-anchor="content" data-sticky-on="large">
+                    {% include "elements/journal/search_form.html" %}
+                    <div class="section">
+                        <label>{% trans "Keywords" %}</label>
+                        <ul class="keywords-list">
+                            {% for keyword in all_keywords %}
+                                <li>
+                                    <a href="{% url 'search' %}?keyword={{ keyword.word }}">
+                                        {{ keyword.word }}<span aria-hidden="true">{% if not forloop.last %}, {% endif %}</span>
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+    </section>
+
+{% endblock body %}

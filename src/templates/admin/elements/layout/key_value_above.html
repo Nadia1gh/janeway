@@ -1,0 +1,32 @@
+{% comment %}
+  This template should be wrapped in <dl></dl> tags when included. Example:
+  <dl>
+    {% include "admin/elements/layout/key_value_above.html" with key="Title" value=preprint.title %}
+    {% include "admin/elements/layout/key_value_above.html" with key="Abstract" value=preprint.abstract %}
+  </dl>
+{% endcomment %}
+
+<div class="key-value-pair key-above{% if no_bottom_margin %} no-bottom-margin{% endif %}">
+  <dt class="key">
+    {{ key }}
+  </dt>
+  <dd class="value">
+    {% if list %}
+      <ul class="inline-list">
+        {% for item in value %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% elif link %}
+      <a href="{{ link }}" target="_blank">
+        {{ value }}
+        <span class="show-for-sr">(opens in new tab)</span>
+        <span class="fa fa-external-link"></span>
+      </a>
+    {% elif render_line_breaks %}
+      {{ value|linebreaksbr|default:"No value supplied" }}
+    {% else %}
+      {{ value|default:"No value supplied" }}
+    {% endif %}
+  </dd>
+</div>

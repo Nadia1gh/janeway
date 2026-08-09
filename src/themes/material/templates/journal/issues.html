@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% load i18n roles %}
+
+
+{% block title %}{% trans "Issues" %}{% endblock %}
+
+{% block body %}
+    {% if request.user %}
+        {% user_has_role request 'editor' as user_is_editor %}
+    {% endif %}
+    <div class="row">
+        <div class="col m12">
+            <h1>{% trans issue_type.plural_name %}</h1>
+        </div>
+        <div class="col m12">
+            {% if request.journal.display_issues_grouped_by_decade %}
+                {% include "elements/journal/issue_list_by_decade.html" %}
+            {% else %}
+                {% include "elements/journal/issue_list.html" %}
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

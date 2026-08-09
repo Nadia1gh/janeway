@@ -1,0 +1,12 @@
+{% if user.affiliations.exists %}
+  <p>
+    <strong>
+      {% blocktrans count counter=user.affiliations.count %}
+        Affiliation:
+      {% plural %}
+        Affiliations:
+      {% endblocktrans %}
+    </strong>
+    {% include "common/elements/affiliation_outer_ul.html" with affiliations=user.affiliations %}
+  </p>
+{% endif %}

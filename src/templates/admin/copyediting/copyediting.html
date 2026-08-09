@@ -1,0 +1,59 @@
+{% extends "admin/core/base.html" %}
+
+{% block page_title %}Copyediting{% endblock %}
+{% block title %}Copyediting{% endblock %}
+{% block admin-header %}Articles in Copyediting{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/copyediting_base.html" %}
+{% endblock breadcrumbs %}
+
+{% block body %}
+    <div class="large-12 columns box">
+        <div class="title-area">
+            <h2>Articles in Copyediting</h2>
+        </div>
+        <div class="content">
+            <table class="small scroll" id="unassigned">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Submitted</th>
+                    <th>Accepted</th>
+                    <th>Main Author</th>
+                    <th>Section</th>
+                    <th>Projected Issue</th>
+                    <th>Stage</th>
+                    <th>Assignments</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for article in articles_in_copyediting %}
+                    <tr>
+                        <td>{{ article.pk }}</td>
+                        <td><a href="{% url 'article_copyediting' article.pk %}">{{ article.safe_title }}</a></td>
+                        <td>{{ article.date_submitted }}</td>
+                        <td>{{ article.date_accepted }}</td>
+                        <td>{{ article.correspondence_author.full_name }}</td>
+                        <td>{{ article.section.name }}</td>
+                        <td>{% if article.projected_issue %}{{ article.projected_issue.display_title }}{% else %}None{% endif %}</td>
+                        <td>{{ article.stage }}</td>
+                        <td>{% for assignment in article.copyeditassignment_set.all %}<a href="{% url 'editor_review' article.pk assignment.pk %}">{{ assignment.copyeditor.full_name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}No assignments{% endfor %}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7">No articles in this stage</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+
+            </table>
+        </div>
+    </div>
+{% endblock body %}
+
+{% block js %}
+    {% include "elements/datatables.html" with target="#unassigned" %}
+{% endblock js %}

@@ -1,0 +1,312 @@
+{% extends "admin/core/base.html" %}
+
+{% block title %}User History{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li><a href="{% url 'core_manager_users' %}">Users</a></li>
+    <li>History of {{user.first_name}} {{user.last_name}} </li>
+{% endblock %}
+
+{% block title-section %}User History{% endblock %}
+{% block title-sub %}Displaying workflow history for {{ user.full_name }}{% endblock %}
+
+{% block body %}
+    <div class="box">
+        <div class="row expanded">
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Submissions</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Stage</th>
+                            <th>Date Started</th>
+                            <th>Last Update</th>
+                        </tr>
+                        {% for submission in submissions %}
+                            <tr>
+                                <td>{{ submission.pk }}</td>
+                                {% if submission.stage == stages.STAGE_UNSUBMITTED %}
+                                    <td>{{ submission.safe_title }}</td>
+                                {% else %}
+                                    <td><a href="{% url 'manage_archive_article' submission.pk %}">{{ submission.safe_title }}</a></td>
+                                {% endif %}
+                                <td>{{ submission.stage }}</td>
+                                <td>{{ submission.date_started|date:"Y-m-d" }}</td>
+                                <td>{{ submission.date_updated|date:"Y-m-d" }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No submissions</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Publications</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Date Started</th>
+                            <th>Date Published</th>
+                        </tr>
+                        {% for publication in publications %}
+                            <tr>
+                                <td>{{ publication.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' publication.pk %}">{{ publication.safe_title }}</a></td>
+                                <td>{{ publication.date_started|date:"Y-m-d" }}</td>
+                                <td>{{ publication.date_published|date:"Y-m-d" }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4">No publications</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="row expanded">
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Editorial Assignments</h2>
+                </div>
+                <div class="content">
+                <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Assigned</th>
+                            <th>Notified</th>
+                            <th>Type</th>
+                        </tr>
+                        {% for assignment in user.editorassignment_set.all %}
+                            <tr>
+                                <td>{{ assignment.article.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' assignment.article.pk %}">{{ assignment.article.safe_title }}</a></td>
+                                <td>{{ assignment.assigned }}</td>
+                                <td>{{ assignment.notified }}</td>
+                                <td>{{ assignment.editor_type|capfirst }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No editorial assignments</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Review Assignments</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Assigned</th>
+                            <th>Due</th>
+                            <th>Status</th>
+                        </tr>
+                        {% for assignment in review_assignments %}
+                            <tr>
+                                <td>{{ assignment.article.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' assignment.article.pk %}">{{ assignment.article.safe_title }}</a></td>
+                                <td>{{ assignment.date_requested }}</td>
+                                <td>{{ assignment.date_due|date:"Y-m-d" }}</td>
+                                <td>
+                                  {{ assignment.request_decision_status }}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No review assignments</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="row expanded">
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Copyediting Assignments</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Assigned</th>
+                            <th>Due</th>
+                            <th>Complete</th>
+                        </tr>
+                        {% for assignment in copyedit_assignments %}
+                            <tr>
+                                <td>{{ assignment.article.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' assignment.article.pk %}">{{ assignment.article.safe_title }}</a></td>
+                                <td>{{ assignment.assigned }}</td>
+                                <td>{{ assignment.due }}</td>
+                                <td>{{ assignment.copyeditor_completed }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No copyediting assignments</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Typesetting Assignments</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Assigned</th>
+                            <th>Accepted</th>
+                            <th>Complete</th>
+                        </tr>
+                        {% for assignment in user.typesettask_set.all %}
+                            <tr>
+                                <td>{{ assignment.assignment.article.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' assignment.assignment.article.pk %}">{{ assignment.assignment.article.safe_title }}</a></td>
+                                <td>{{ assignment.assigned }}</td>
+                                <td>{{ assignment.accepted }}</td>
+                                <td>{{ assignment.completed }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No typesetting assignments</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="row expanded">
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Production Manager Assignments</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Assigned</th>
+                            <th>Notified</th>
+                            <th>Closed</th>
+                        </tr>
+                        {% for assignment in user.productionassignment_set.all %}
+                            <tr>
+                                <td>{{ assignment.article.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' assignment.article.pk %}">{{ assignment.article.safe_title }}</a></td>
+                                <td>{{ assignment.assigned }}</td>
+                                <td>{{ assignment.notified }}</td>
+                                <td>{{ assignment.closed }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No production manager assignments</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            <div class="large-6 columns">
+                <div class="title-area">
+                    <h2>Proofing Assignments</h2>
+                </div>
+                <div class="content">
+                    <table class="scroll small">
+                        <tr>
+                            <th>ID</th>
+                            <th>Article</th>
+                            <th>Assigned</th>
+                            <th>Due</th>
+                            <th>Complete</th>
+                        </tr>
+                        {% for assignment in user.proofingtask_set.all %}
+                            <tr>
+                                <td>{{ assignment.round.assignment.article.pk }}</td>
+                                <td><a href="{% url 'manage_archive_article' assignment.round.assignment.article.pk %}">{{ assignment.round.assignment.article.safe_title }}</a></td>
+                                <td>{{ assignment.assigned }}</td>
+                                <td>{{ assignment.due }}</td>
+                                <td>{{ assignment.completed }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">No proofing assignments</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+            <div class="large-12 columns">
+                <div class="title-area">
+                    <h2>Direct Contact Log</h2>
+                </div>
+                <div class="content">
+                    <table id="log" class="scroll">
+                        <thead>
+                        <tr>
+                            <th>Entry Type</th>
+                            <th>Date</th>
+                            <th>Actor</th>
+                            <th>Level</th>
+                            {% if settings.ENABLE_ENHANCED_MAILGUN_FEATURES %}
+                                <th>Email Status</th>{% endif %}
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for entry in log_entries %}
+                            <tr>
+                                <td>{{ entry.types }}</td>
+                                <td>{{ entry.date|date:"Y-m-d H:i:s" }}</td>
+                                <td>{{ entry.actor.full_name }}</td>
+                                <td>{{ entry.get_level_display|capfirst }}</td>
+                                {% if settings.ENABLE_ENHANCED_MAILGUN_FEATURES %}
+                                    <td>
+                                        {% if entry.is_email %}
+                                            <i class="fa fa-circle {{ entry.message_status_class }}"
+                                               aria-hidden="true"></i>
+                                            {{ entry.get_message_status_display }}
+                                        {% endif %}
+                                    </td>{% endif %}
+                                <td><a href="#"
+                                       data-open="entry-{{ entry.pk }}">View
+                                    Content</a></td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% for entry in log_entries %}
+    {% include "elements/journal/log_description.html" with entry=entry %}
+    {% endfor %}
+
+{% endblock %}
+
+{% block js %}
+    {% include "elements/datatables.html" with target="#log" sort=1 %}
+{% endblock %}

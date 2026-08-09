@@ -1,0 +1,52 @@
+{% extends "core/base.html" %}
+{% load i18n %}
+{% load materializecss %}
+
+{% block title %}{% trans "Contact" %}{% endblock %}
+
+{% block body %}
+    <div class="row">
+        <div class="col m5">
+            <h1 class="sr-only">{% trans 'Contact us' %}</h1>
+            <div class="card">
+                <div class="card-content">
+                    <h2 class="card-title">
+                        {% if request.journal %}
+                            {% trans "Journal Representatives" %}
+                        {% else %}
+                            {% trans "Press Representatives" %}
+                        {% endif %}
+                    </h2>
+                    {% for contact in contacts %}
+                        <h3>{{ contact.name }}</h3>
+                        <p>{{ contact.role }}</p>
+                    {% endfor %}
+                    {% if journal_settings.general.contact_info %}
+                        <h2 class="card-title">
+                            {% trans 'Contact Information' %}
+                        </h2>
+                        {{ journal_settings.general.contact_info|safe }}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col l7 m7">
+            <div class="card">
+                <div class="card-content">
+                    <h2 class="card-title">
+                        {% trans "Contact" %}
+                    </h2>
+                    <form method="POST" novalidate>
+                        {% include "elements/forms/errors.html" with form=contact_form %}
+                        {% csrf_token %}
+
+                        {{ contact_form|materializecss }}
+
+                        <button type="submit" class="btn">{% trans "Send Message" %}</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

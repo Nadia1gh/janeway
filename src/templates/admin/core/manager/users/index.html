@@ -1,0 +1,86 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+{% load next_url %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li>Users</li>
+{% endblock %}
+
+{% block title %}Enrolled Users{% endblock %}
+{% block title-section %}Enrolled Users{% endblock %}
+{% block title-sub %}A list of users who have been enrolled.{% endblock %}
+
+
+
+{% block body %}
+    <div class="large-12 columns">
+        <div class="box">
+            <div class="title-area">
+                <h2>Journal Users</h2>
+                <a href="{% url 'core_add_user' %}" class="button"><i class="fa fa-plus">&nbsp;</i>Add New User</a>
+                <a href="{% url 'core_manager_index' %}" class="button">< Go back</a>
+            </div>
+            <div class="content">
+
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="row expanded">
+                        <div class="large-12 columns">
+                            <p>All of the users who have a role on your journal are listed below. If you wish to add an un-enrolled user you can do so from the <a href="{% url 'core_manager_enrol_users' %}?return={% url 'core_manager_users' %}">Enrol User</a> interface.</p>
+                        </div>
+                        <div class="medium-4 columns">
+                            <select name="role">
+                                {% for role in roles %}
+                                    <option value="{{ role.pk }}">{{ role.name }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="medium-2 columns end">
+                            <button name="add_users" class="success button">Add Users to Role</button>
+                        </div>
+                    </div>
+                    <table class="small scroll" id='users'>
+                        <thead>
+                        <tr>
+                            <th></th>
+                            <th width="12%">Username</th>
+                            <th width="12%">First Name</th>
+                            <th width="15%">Last Name</th>
+                            <th width="20%">Email</th>
+                            <th width="15%">History</th>
+                            <th width="12%">Edit</th>
+                            {% if settings.HIJACK_USERS_ENABLED and request.user.is_superuser %}<th width="9%">Control User</th>{% endif %}
+                        </tr>
+                        </thead>
+                        {% for user in users %}
+                            <tr>
+                                <td><input type="checkbox" name="users" value="{{ user.pk }}"></td>
+                                <td>{{ user.username }}</td>
+                                <td>{{ user.first_name }}</td>
+                                <td>{{ user.last_name }}</td>
+                                <td>{{ user.email }} <a onclick="return popitup('{% url 'send_user_email' user.pk %}')"><i class="fa fa-envelope">&nbsp;</i></a></td>
+                                <td><a class="tiny success button" href="{% url 'core_user_history' user.id %}">History</a></td>
+                                <td><a class="tiny success button"
+                                       href="{% url_with_return 'core_user_edit' user.id %}">Edit</a></td>
+                                {% if settings.HIJACK_USERS_ENABLED and request.user.is_superuser %}
+                                    <td>
+                                          <button formaction="{% url 'hijack:acquire' %}" name="user_pk" value="{{ user.pk }}" type="submit" class="tiny button"> Control User </button>
+                                          <input  type="hidden" name="next" value="{% url 'core_dashboard' %}">
+                                    </td>
+                                {% endif %}
+                            </tr>
+                        {% endfor %}
+                    </table>
+
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock body %}
+
+
+{% block js %}
+    {% include "elements/datatables.html" with target="#users" %}
+    <script type="text/javascript" src="{% static 'admin/js/popup.js' %}"></script>
+{% endblock js %}

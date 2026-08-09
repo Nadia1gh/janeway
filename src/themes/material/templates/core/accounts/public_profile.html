@@ -1,0 +1,34 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ user.full_name }} {% trans "Profile" %}{% endblock %}
+
+{% block body %}
+	<section id="content">
+		<div class="row">
+            <div class="col m3">
+                {% include "common/elements/profile_image.html" with classes="responsive-img thumbnail editorial-image" user=user %}
+                <h1>{{ user.full_name }}</h1>
+                <p><strong>{% trans "Roles" %}: </strong><br>{% for role in roles %}{{ role.role.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+                {% include "common/elements/profile_affiliations.html" %}
+            </div>
+            <div class="col m9">
+                {% if user.biography %}
+                    <h2>{% trans "Biography" %}</h2>
+                    <hr aria-hidden="true" />
+                    {{ user.biography|safe }}
+                    <br/><br/>
+                {% endif %}
+                {% if user.published_articles %}
+                    <h2>{% trans "Publications" %}</h2>
+                    <hr aria-hidden="true" />
+                    {% for article in user.published_articles %}
+                        {% include "elements/article_listing.html" with article=article level="deep" %}
+                        <hr aria-hidden="true" />
+                    {% endfor %}
+                {% endif %}
+            </div>
+		</div>
+	</section>
+{% endblock %}

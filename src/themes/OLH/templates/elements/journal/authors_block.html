@@ -1,0 +1,15 @@
+{% comment %}
+  Deprecated. Use common/elements/journal/article_authors_compact.html.
+{% endcomment %}
+
+{% spaceless %}
+  <ul class="list-inline comma-and-sep">
+    {% for author in article.frozenauthor_set.all %}
+      {% if not limit or forloop.counter < limit %}
+        <li>{{ author.full_name }}</li>
+      {% elif limit and forloop.counter == limit %}
+        <li>{% trans "others" %}</li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+{% endspaceless %}

@@ -1,0 +1,26 @@
+{% extends "core/base.html" %}
+
+{% comment %}
+  This template is deprecated. Preprint templates are in templates/repository/.
+{% endcomment %}
+
+{% load i18n %}
+
+{% block title %}{% trans "About" %} {{ request.press.name }} {% trans "Preprints" %}{% endblock %}
+
+{% block body %}
+    <div class="row">
+        <div class="col m12">
+            <h1 class="text-center">{% trans "About" %} {{ request.press.name }} {% trans "Preprints" %}</h1>
+        </div>
+
+        <br/><br/><br/><br/>
+
+        <div class="row">
+            <div class="col m12">
+                {{ request.press.preprints_about|safe }}
+            </div>
+        </div>
+    </div>
+
+{% endblock %}

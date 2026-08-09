@@ -1,0 +1,51 @@
+{% load i18n foundation %}
+
+<!-- Note: this is transcluded as templated HTML because we need to pass: 1. translation templates; and 2. CSRF tokens-->
+<script>
+   function search_fundref(query) {
+    var query_url = '//api.crossref.org/funders?query=' + query;
+
+    // Clear out old modals
+    console.log('Clearing old modals.');
+    $("div.fundref_modal").remove();
+    console.log('Fetching ' + query_url);
+    $("#funder_list").html('<p class="text-center"><i class="fa fa-circle-o-notch fa-spin"></i><br />Searching Fundref...</p>');
+    fetch(query_url)
+        .then(response => response.json())
+        .then(json => {
+            const funder_span = $('#funder_list');
+            funder_span.empty();
+
+            const table = $('<table>').addClass('scroll');
+            const thead = $('<thead>').appendTo(table);
+            const thead_tr = $('<tr>').appendTo(thead);
+            $('<th>').text('{% trans "Funder" %}').appendTo(thead_tr);
+            $('<th>').text('{% trans "FundRef ID" %}').appendTo(thead_tr);
+            $('<th>').text('{% trans "Add Funder" %}').appendTo(thead_tr);
+
+            $.each(json.message.items, (index, funder) => {
+                const funder_tr = $('<tr>').appendTo(table);
+                $('<td>').text(funder.name).appendTo(funder_tr);
+                $('<td>').text(funder.uri).appendTo(funder_tr);
+                const add_funder_td = $('<td>').appendTo(funder_tr);
+                const add_funder_button = $('<a>')
+                    .addClass('success button pull-right')
+                    .attr({
+                        'data-name': funder.name,
+                        'data-fundref-id': funder.uri,
+                        'data-open': 'add_funder',
+                        'name': 'add_funder_' + index
+                    })
+                    .text('{% trans "Add funder" %}')
+                    .appendTo(add_funder_td);
+
+                add_funder_button.on('click', function() {
+                    $('#id_name').val($(this).data('name'));
+                    $('#id_fundref_id').val($(this).data('fundref-id'));
+                });
+            });
+
+            funder_span.html(table);
+        });
+}
+</script>

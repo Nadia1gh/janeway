@@ -1,0 +1,41 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+
+
+{% block title %}{{ journal.general.journal_name }} Roles{% endblock title %}
+{% block title-section %}Roles{% endblock %}
+{% block title-sub %}List{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li>Roles</li>
+{% endblock %}
+
+
+{% block body %}
+    <div class="large-12 columns">
+        <div class="box">
+            <div class="title-area">
+                <h2>User Roles</h2>
+                <a href="{% url 'core_manager_index' %}" class="button">< Go back</a>
+            </div>
+            <div class="content">
+                <table class="table scroll">
+                    <tr>
+                        <th>Role Name</th>
+                        <th>No. Enrolled Users</th>
+                        <th></th>
+                    </tr>
+                    {% for role in roles %}
+                        <tr>
+                            <td>{{ role.name }}</td>
+                            <td>{{ role.user_count }}</td>
+                            <td><a href="{% url 'core_manager_role' role.slug %}">View Enrolled Users</a></td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+{% endblock body %}

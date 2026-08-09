@@ -1,0 +1,883 @@
+__copyright__ = "Copyright 2017 Birkbeck, University of London"
+__author__ = "Martin Paul Eve & Andy Byers"
+__license__ = "AGPL v3"
+__maintainer__ = "Birkbeck Centre for Technology and Publishing"
+import os
+
+from django.db import models
+from django.utils import timezone
+from django.db.models import Max, Q, Value
+from django.conf import settings
+from django.db.models import Max, Q
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.contrib.contenttypes.models import ContentType
+from django.urls import reverse
+from django.utils.safestring import mark_safe
+from django.utils.translation import gettext as _
+
+from core import files
+from core import model_utils
+from core import models as core_models
+
+from review.const import (
+    EditorialDecisions as ED,
+    ReviewerDecisions as RD,
+    VisibilityOptions as VO,
+)
+from utils import shared
+from identifiers import models as identifier_models, logic as id_logic
+
+
+assignment_choices = (
+    ("editor", "Editor"),
+    ("section-editor", "Section Editor"),
+)
+
+
+def all_review_decisions():
+    """
+    Review decision options presented in admin.
+    """
+    return (
+        (RD.DECISION_ACCEPT.value, "Accept Without Revisions"),
+        (RD.DECISION_MINOR.value, "Minor Revisions Required"),
+        (RD.DECISION_MAJOR.value, "Major Revisions Required"),
+        (RD.DECISION_REJECT.value, "Reject"),
+        (RD.DECISION_NO_RECOMMENDATION.value, "No Recommendation"),
+        (RD.DECISION_WITHDRAWN.value, "Withdrawn"),
+    )
+
+
+def reviewer_decision_choices():
+    """
+    Review decision options presented to a Reviewer.
+    """
+    return (
+        (None, "-----------"),
+        (RD.DECISION_ACCEPT.value, "Accept Without Revisions"),
+        (RD.DECISION_MINOR.value, "Minor Revisions Required"),
+        (RD.DECISION_MAJOR.value, "Major Revisions Required"),
+        (RD.DECISION_REJECT.value, "Reject"),
+    )
+
+
+def draft_decision_choices():
+    return (
+        (ED.ACCEPT.value, "Accept Without Revisions"),
+        (ED.MINOR_REVISIONS.value, "Minor Revisions Required"),
+        (ED.MAJOR_REVISIONS.value, "Major Revisions Required"),
+        (ED.CONDITIONAL_ACCEPT.value, "Conditional Accept"),
+        # Preserved the inconsistent verbose name below to avoid confusion to
+        # existing section editors
+        (ED.DECLINE.value, "Reject"),
+    )
+
+
+def review_type():
+    return (
+        ("traditional", "Traditional"),
+        # ('annotation', 'Annotation'),
+    )
+
+
+def review_visibilty():
+    return (
+        (VO.OPEN.value, "Open"),
+        (VO.SINGLE_ANON.value, "Single Anonymous"),
+        (VO.DOUBLE_ANON.value, "Double Anonymous"),
+    )
+
+
+class EditorAssignment(models.Model):
+    article = models.ForeignKey(
+        "submission.Article",
+        on_delete=models.CASCADE,
+    )
+    editor = models.ForeignKey(
+        "core.Account",
+        on_delete=models.CASCADE,
+    )
+    editor_type = models.CharField(max_length=20, choices=assignment_choices)
+    assigned = models.DateTimeField(default=timezone.now)
+    notified = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("article", "editor")
+
+
+class ReviewRound(models.Model):
+    article = models.ForeignKey(
+        "submission.Article",
+        on_delete=models.CASCADE,
+    )
+    round_number = models.IntegerField()
+    review_files = models.ManyToManyField("core.File")
+    date_started = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("article", "round_number")
+        ordering = ("-round_number",)
+
+    def __str__(self):
+        return "%s - %s round_number: %s" % (
+            self.pk,
+            self.article.title,
+            self.round_number,
+        )
+
+    def __repr__(self):
+        return "%s - %s round number: %s" % (
+            self.pk,
+            self.article.title,
+            self.round_number,
+        )
+
+    def active_reviews(self):
+        return self.reviewassignment_set.exclude(
+            Q(date_declined__isnull=False) | Q(decision="withdrawn")
+        ).order_by(
+            "-decision",
+        )
+
+    def inactive_reviews(self):
+        return self.reviewassignment_set.filter(
+            Q(date_declined__isnull=False) | Q(decision="withdrawn")
+        ).order_by(
+            "decision",
+        )
+
+    @classmethod
+    def latest_article_round(cls, article):
+        """Works out and returns the latest article review round
+        MS: I'm still not quite sure why it works but it does
+        the round with a single query:
+            SELECT "review_reviewround"."*"
+            "FROM "review_reviewround"
+            WHERE ("review_reviewround"."article_id" = {id}
+            AND "review_reviewround"."round_number" = (
+                SELECT MAX(U0."round_number") AS "latest_round"
+                FROM "review_reviewround" U0 WHERE U0."article_id" = {id})
+            )
+            ORDER BY "review_reviewround"."round_number" DESC
+        """
+        latest_round = (
+            cls.objects.filter(article=article)
+            .aggregate(
+                latest_round_number=Max("round_number"),
+            )
+            .get("latest_round_number", 0)
+        )
+
+        return cls.objects.get(article=article, round_number=latest_round)
+
+
+class CompletedReviewsManager(models.Manager):
+    """
+    This manager allows you to filter for reviews that were
+    completed by a human. It checks that:
+    1. The review was not declined
+    2. is_complete is True
+    3. A decision was made
+    4. That decision is not 'withdrawn'
+    """
+
+    def get_queryset(self):
+        return (
+            super(CompletedReviewsManager, self)
+            .get_queryset()
+            .filter(
+                date_declined__isnull=True,
+                is_complete=True,
+                decision__isnull=False,
+            )
+            .exclude(
+                decision="withdrawn",
+            )
+        )
+
+
+class ReviewAssignment(models.Model):
+    # FKs
+    article = models.ForeignKey(
+        "submission.Article",
+        on_delete=models.CASCADE,
+    )
+    reviewer = models.ForeignKey(
+        "core.Account",
+        related_name="reviewer",
+        help_text="User to undertake the review",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    editor = models.ForeignKey(
+        "core.Account",
+        related_name="editor",
+        help_text="Editor requesting the review",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+
+    # Info
+    review_round = models.ForeignKey(
+        ReviewRound,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    decision = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True,
+        choices=all_review_decisions(),
+        verbose_name="Recommendation",
+    )
+    competing_interests = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="If any of the authors or editors "
+        "have any competing interests please add them here. "
+        "EG. 'This study was paid for by corp xyz.'.",
+    )
+    review_type = models.CharField(
+        max_length=20,
+        choices=review_type(),
+        default="traditional",
+        help_text="Currently only traditional, form based, review is available.",
+    )
+    visibility = models.CharField(
+        max_length=20,
+        choices=review_visibilty(),
+        default="double-blind",
+        verbose_name=_("Anonymity"),
+    )
+    form = models.ForeignKey("ReviewForm", null=True, on_delete=models.SET_NULL)
+    access_code = models.CharField(max_length=100, blank=True, null=True)
+
+    # Dates
+    date_requested = models.DateTimeField(auto_now_add=True)
+    date_due = models.DateField()
+    date_accepted = models.DateTimeField(blank=True, null=True)
+    date_declined = models.DateTimeField(blank=True, null=True)
+    date_complete = models.DateTimeField(blank=True, null=True)
+    date_reminded = models.DateField(blank=True, null=True)
+
+    is_complete = models.BooleanField(default=False)
+    for_author_consumption = models.BooleanField(default=False)
+
+    suggested_reviewers = models.TextField(blank=True, null=True)
+    comments_for_editor = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="If you have any comments for the Editor you can add them here; \
+                                           these will not be shared with the Author.",
+        verbose_name="Comments for the Editor",
+    )
+    review_file = models.ForeignKey(
+        "core.File",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    display_review_file = models.BooleanField(default=False)
+    permission_to_make_public = models.BooleanField(
+        default=False,
+        help_text="This journal has a policy of sharing reviews openly alongside the published article to aid in transparency. If you give permission here and the article is published, your name and review will be visible.",
+    )
+    display_public = models.BooleanField(
+        default=False, help_text="Whether this review should be publicly displayed."
+    )
+
+    # set the default and completed reviews managers
+    objects = models.Manager()
+    completed_reviews = CompletedReviewsManager()
+
+    def review_form_answers(self):
+        return ReviewAssignmentAnswer.objects.filter(assignment=self).order_by(
+            "frozen_element__order"
+        )
+
+    def save_review_form(self, review_form, assignment, req_files=None):
+        if not req_files:
+            req_files = {}
+        for k, v in review_form.cleaned_data.items():
+            form_element = ReviewFormElement.objects.get(
+                reviewform=assignment.form, pk=k
+            )
+            answer, _ = ReviewAssignmentAnswer.objects.update_or_create(
+                assignment=self,
+                original_element=form_element,
+                defaults={
+                    "author_can_see": form_element.default_visibility,
+                    "answer": v,
+                },
+            )
+            if k in req_files:
+                answer_file, _ = ReviewAssignmentAnswerFile.objects.get_or_create(
+                    answer=answer,
+                    edited=False,
+                )
+                answer_file.save_file(req_files[k])
+
+            form_element.snapshot(answer)
+
+    @property
+    def review_rating(self):
+        try:
+            return ReviewerRating.objects.get(assignment=self)
+        except ReviewerRating.DoesNotExist:
+            return None
+
+    @property
+    def is_late(self):
+        # test if the review itself is late
+        if timezone.now().date() >= self.date_due:
+            return True
+
+        return False
+
+    @property
+    def task_is_late(self):
+        if self.date_accepted is not None:
+            return False
+        else:
+            # imports are here to avoid circular dependency
+            from core import models as core_models
+            from utils import workflow_tasks
+
+            active_tasks = core_models.Task.objects.filter(
+                Q(content_type=ContentType.objects.get_for_model(self.article))
+                & Q(object_id=self.article.pk)
+                & Q(completed__isnull=True)
+                & Q(title=workflow_tasks.DO_REVIEW_TITLE)
+                & Q(assignees=self.reviewer)
+            )
+
+            for task in active_tasks:
+                if task.is_late:
+                    return True
+
+        return False
+
+    @property
+    def status(self):
+        if self.decision == RD.DECISION_WITHDRAWN.value:
+            return {
+                "code": "withdrawn",
+                "display": "Withdrawn",
+                "span_class": "red",
+                "date": "",
+                "reminder": None,
+            }
+        elif self.date_complete and self.date_accepted:
+            return {
+                "code": "complete",
+                "display": "Complete",
+                "span_class": "light-green",
+                "date": shared.day_month(self.date_complete),
+                "reminder": None,
+            }
+        elif self.date_accepted:
+            return {
+                "code": "accept",
+                "display": "Yes",
+                "span_class": "green",
+                "date": shared.day_month(self.date_accepted),
+                "reminder": "accepted",
+            }
+        elif self.date_declined:
+            return {
+                "code": "declined",
+                "display": "No",
+                "span_class": "red",
+                "date": shared.day_month(self.date_declined),
+                "reminder": None,
+            }
+        else:
+            return {
+                "code": "wait",
+                "display": "Wait",
+                "span_class": "amber",
+                "date": "",
+                "reminder": "request",
+            }
+
+    def request_decision_status(self):
+        if self.decision == RD.DECISION_WITHDRAWN.value:
+            if self.date_complete:
+                date = self.date_complete.date()
+            else:
+                date = "[unknown date]"
+            return f"Withdrawn {date}"
+        elif self.date_complete and self.date_accepted:
+            return f"Complete {self.date_complete.date()}"
+        elif self.date_accepted:
+            return f"Accepted {self.date_accepted.date()}"
+        elif self.date_declined:
+            return f"Declined {self.date_declined.date()}"
+        return "Awaiting acknowledgement"
+
+    def visibility_statement(self):
+        if self.for_author_consumption:
+            return _("available for the author to access")
+        return _("not available for the author to access")
+
+    def withdraw(self):
+        self.date_complete = timezone.now()
+        self.decision = RD.DECISION_WITHDRAWN.value
+        self.is_complete = True
+        self.save()
+
+    def decision_to_crossref(self):
+        """
+        Maps a decision to Crossref deposit recommendations.
+        """
+        if self.decision == RD.DECISION_ACCEPT.value:
+            return "accept"
+        elif self.decision == RD.DECISION_MINOR.value:
+            return "minor-revision"
+        elif self.decision == RD.DECISION_MAJOR.value:
+            return "major-revision"
+        elif self.decision == RD.DECISION_REJECT.value:
+            return "reject"
+
+    def get_doi_pattern(self):
+        article_pattern = self.article.doi_pattern_preview
+        return f"{article_pattern}.r{self.pk}"
+
+    def get_doi(self, _object=False):
+        try:
+            try:
+                doi = identifier_models.Identifier.objects.get(
+                    id_type="doi", review=self
+                )
+            except identifier_models.Identifier.MultipleObjectsReturned:
+                doi = identifier_models.Identifier.objects.filter(
+                    id_type="doi",
+                    review=self,
+                ).first()
+            if not _object:
+                return doi.identifier
+            else:
+                return doi
+        except identifier_models.Identifier.DoesNotExist:
+            return None
+
+    def register_doi(self):
+        if self.article.is_accepted():
+            id_logic.register_review_doi(self.get_doi_pattern())
+
+    def __str__(self):
+        if self.reviewer:
+            reviewer_name = self.reviewer.full_name()
+        else:
+            reviewer_name = "No reviewer"
+
+        return "{0} - Article: {1}, Reviewer: {2}".format(
+            self.id, self.article.title, reviewer_name
+        )
+
+
+class ReviewForm(models.Model):
+    journal = models.ForeignKey(
+        "journal.Journal",
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(max_length=200)
+    intro = model_utils.JanewayBleachField(
+        help_text="Message displayed at the start of the review form.",
+    )
+    thanks = model_utils.JanewayBleachField(
+        help_text="Message displayed after the reviewer is finished.",
+    )
+    elements = models.ManyToManyField("ReviewFormElement")
+    deleted = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+
+def element_kind_choices():
+    return (
+        ("text", "Text Field"),
+        ("textarea", "Text Area"),
+        ("check", "Check Box"),
+        ("select", "Select"),
+        ("email", "Email"),
+        ("upload", "Upload"),
+        ("date", "Date"),
+    )
+
+
+class BaseReviewFormElement(models.Model):
+    name = models.CharField(max_length=200)
+    kind = models.CharField(max_length=50, choices=element_kind_choices())
+    choices = models.CharField(
+        max_length=1000,
+        null=True,
+        blank=True,
+        help_text="Seperate choices with the bar | character.",
+    )
+    required = models.BooleanField(default=True)
+    order = models.IntegerField()
+    help_text = model_utils.JanewayBleachField(blank=True, null=True)
+
+    default_visibility = models.BooleanField(
+        default=True,
+        help_text="If true, this setting will be available "
+        "to the author automatically, if false it will"
+        "be hidden to the author by default.",
+    )
+
+    class Meta:
+        ordering = ("order", "name")
+        abstract = True
+
+    def __str__(self):
+        return "Element: {0} ({1})".format(self.name, self.kind)
+
+    def choices_list(self):
+        if self.choices:
+            return
+
+
+class ReviewFormElement(BaseReviewFormElement):
+    class Meta(BaseReviewFormElement.Meta):
+        pass
+
+    def snapshot(self, answer):
+        frozen, _ = FrozenReviewFormElement.objects.update_or_create(
+            answer=answer,
+            defaults=dict(
+                form_element=self,
+                name=self.name,
+                kind=self.kind,
+                choices=self.choices,
+                required=self.required,
+                order=self.order,
+                help_text=self.help_text,
+                default_visibility=self.default_visibility,
+            ),
+        )
+        return frozen
+
+
+class ReviewAssignmentAnswer(models.Model):
+    assignment = models.ForeignKey(
+        ReviewAssignment,
+        on_delete=models.CASCADE,
+    )
+    original_element = models.ForeignKey(
+        ReviewFormElement,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    answer = model_utils.JanewayBleachField(blank=True, null=True)
+    edited_answer = model_utils.JanewayBleachField(null=True, blank=True)
+    author_can_see = models.BooleanField(default=True)
+
+    def __str__(self):
+        return "{0}, {1}".format(self.assignment, self.element)
+
+    @property
+    def element(self):
+        return self.frozen_element
+
+    @property
+    def best_label(self):
+        if self.original_element:
+            return self.original_element.name
+        elif self.frozen_element:
+            return self.frozen_element.name
+        else:
+            return (
+                "element"  # this is a fallback incase the two links above are removed.
+            )
+
+    def render_answer(self, edited=False):
+        to_render = self.answer
+        if edited:
+            to_render = self.edited_answer
+
+        answer_file = self.files.filter(edited=edited).first()
+        if answer_file and answer_file.file:
+            uri = reverse(
+                "review_attachment_download",
+                kwargs={
+                    "assignment_id": self.assignment.id,
+                    "file_uuid": answer_file.file.uuid_filename,
+                },
+            )
+            to_render = f"<a href={uri}>{to_render}</a>"
+
+        return mark_safe(to_render)
+
+    def render_edited_answer(self):
+        return self.render_answer(edited=True)
+
+
+class ReviewAssignmentAnswerFile(models.Model):
+    LABEL = "Reviewer Attachment"
+    answer = models.ForeignKey(
+        "review.ReviewAssignmentAnswer", on_delete=models.CASCADE, related_name="files"
+    )
+    file = models.ForeignKey(
+        "core.File",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="review_attchments",
+    )
+    edited = models.BooleanField(
+        default=False, help_text="This file is an edit, rather than the original answer"
+    )
+
+    class Meta:
+        # Ensure a single file per answer for reviewer and for editor
+        unique_together = ("answer", "edited")
+
+    @property
+    def reviews_path(self):
+        return os.path.join("reviews", str(self.answer.assignment.id))
+
+    @property
+    def dir_path(self):
+        return os.path.join(
+            settings.BASE_DIR,
+            "files",
+            "articles",
+            str(self.answer.assignment.article.id),
+            self.reviews_path,
+        )
+
+    @property
+    def file_path(self):
+        if not self.file:
+            return ""
+        return os.path.join(
+            self.dir_path,
+            str(self.file.uuid_filename),
+        )
+
+    def save_file(self, file_to_save, owner=None):
+        label = self.LABEL
+        if self.edited:
+            label = f"{label} (edited)"
+
+        if self.file:
+            files.overwrite_file(file_to_save, self.file, self.dir_path)
+        else:
+            file_obj = files.save_file_to_article(
+                file_to_save,
+                self.answer.assignment.article,
+                owner or self.answer.assignment.reviewer,
+                label=label,
+                subdir=self.dir_path,
+            )
+            self.file = file_obj
+            self.save()
+
+
+class FrozenReviewFormElement(BaseReviewFormElement):
+    """A snapshot of a review form element at the time an answer is created"""
+
+    form_element = models.ForeignKey(
+        ReviewFormElement,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    answer = models.OneToOneField(
+        ReviewAssignmentAnswer,
+        related_name="frozen_element",
+        on_delete=models.CASCADE,
+    )
+
+    class Meta(BaseReviewFormElement.Meta):
+        pass
+
+
+class ReviewFormAnswer(models.Model):
+    review_assignment = models.ForeignKey(
+        ReviewAssignment,
+        on_delete=models.CASCADE,
+    )
+    form_element = models.ForeignKey(
+        ReviewFormElement,
+        on_delete=models.CASCADE,
+    )
+    answer = model_utils.JanewayBleachField()
+
+
+class ReviewerRating(models.Model):
+    assignment = models.OneToOneField(
+        ReviewAssignment,
+        on_delete=models.CASCADE,
+    )
+    rating = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(10)]
+    )
+    rater = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+
+    def __str__(self):
+        return "Reviewer: {0}, Article: {1}, Rating: {2}".format(
+            self.assignment.reviewer.full_name(),
+            self.assignment.article.title,
+            self.rating,
+        )
+
+
+class RevisionAction(models.Model):
+    text = model_utils.JanewayBleachField()
+    logged = models.DateTimeField(default=None, null=True, blank=True)
+    user = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+
+    def __str__(self):
+        return "Revision Action by {0}: {1}".format(self.user.full_name(), self.text)
+
+
+def revision_type():
+    return (
+        (ED.MINOR_REVISIONS.value, "Minor Revisions"),
+        (ED.MAJOR_REVISIONS.value, "Major Revisions"),
+        (ED.CONDITIONAL_ACCEPT.value, "Conditional Accept"),
+    )
+
+
+class RevisionRequest(models.Model):
+    article = models.ForeignKey(
+        "submission.Article",
+        on_delete=models.CASCADE,
+    )
+    editor = models.ForeignKey(
+        "core.Account",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    editor_note = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        help_text="You can use this optional field to provide the author with "
+        "any information that may help them when evaluating the "
+        "article reviews and integrating changes into their "
+        "manuscript. This text will be displayed to the author on  "
+        "the revision page, above the reviews.",
+    )
+    author_note = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        verbose_name="Covering Letter to Editor",
+        help_text="If you would like to include a cover letter for the editor "
+        "providing changes you made to your revised manuscript, "
+        "please add this above'",
+    )  # Note from Author to Editor
+    actions = models.ManyToManyField(
+        RevisionAction,
+        blank=True,
+    )  # List of actions Author took during Revision Request
+    type = models.CharField(
+        max_length=20,
+        choices=revision_type(),
+        default="minor_revisions",
+    )
+
+    response_letter = model_utils.JanewayBleachField(
+        blank=True,
+        null=True,
+        verbose_name="Response Letter to Reviewers",
+        help_text="You have the option to include a response letter for the "
+        "reviewers, providing details about the changes you made "
+        "to your manuscript or counter arguments.",
+    )
+
+    date_requested = models.DateTimeField(default=timezone.now)
+    date_due = models.DateField()
+    date_completed = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return "Revision of {0} requested by {1}".format(
+            self.article.title,
+            self.editor.full_name(),
+        )
+
+
+class EditorOverride(models.Model):
+    article = models.ForeignKey(
+        "submission.Article",
+        on_delete=models.CASCADE,
+    )
+    editor = models.ForeignKey(
+        "core.Account",
+        on_delete=models.CASCADE,
+    )
+    overwritten = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return "{0} overrode their access to {1}".format(
+            self.editor.full_name(), self.article.title
+        )
+
+
+class DecisionDraft(models.Model):
+    article = models.ForeignKey(
+        "submission.Article",
+        on_delete=models.CASCADE,
+    )
+    editor = models.ForeignKey(
+        "core.Account",
+        related_name="draft_editor",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    section_editor = models.ForeignKey(
+        "core.Account",
+        related_name="draft_section_editor",
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    decision = models.CharField(
+        max_length=100,
+        choices=draft_decision_choices(),
+        verbose_name="Draft Decision",
+    )
+    message_to_editor = model_utils.JanewayBleachField(
+        null=True,
+        blank=True,
+        help_text="This is the email that will be sent to the editor notifying them that you are "
+        "logging your draft decision.",
+        verbose_name="Email to Editor",
+    )
+    email_message = model_utils.JanewayBleachField(
+        null=True,
+        blank=True,
+        help_text="This is a draft of the email that will be sent to the author. Your editor will check this.",
+        verbose_name="Draft Email to Author",
+    )
+    drafted = models.DateTimeField(auto_now=True)
+
+    editor_decision = models.CharField(
+        max_length=20,
+        choices=((ED.ACCEPT.value, "Accept"), (ED.DECLINE.value, "Decline")),
+        null=True,
+        blank=True,
+    )
+    revision_request_due_date = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Stores a due date for a Drafted Revision Request.",
+    )
+    editor_decline_rationale = model_utils.JanewayBleachField(
+        null=True,
+        blank=True,
+        help_text="Provide the section editor with a rationale for declining their drafted decision.",
+        verbose_name="Rationale for Declining Draft Decision",
+    )
+
+    def __str__(self):
+        return "{0}: {1}".format(self.article.title, self.decision)

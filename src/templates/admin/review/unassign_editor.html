@@ -1,0 +1,41 @@
+{% extends "admin/core/base.html" %}
+{% load settings %}
+
+{% block title %}Unassign Editor Request{% endblock title %}
+{% block title-section %}Unassign Editor Request{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub_pii.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/review_base.html" with subpage="yes" %}
+    <li>Unassign Editor</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+
+    <div class="large-12 columns">
+        <div class="box">
+            <div class="content">
+                <p>You are unassigning {{ assignment.editor.full_name }} from {{ article.safe_title }}.</p>
+                <p>If you select Skip, the editor will not be notified.</p>
+
+                <div class="card">
+                    <div class="card-divider">
+                        <h4>To {{ assignment.reviewer.full_name }}</h4>
+                        <h5>From {{ request.user.full_name }}</h5>
+                    </div>
+                </div>
+                    {% include "admin/elements/email_form.html" with form=form skip=1 %}
+            </div>
+        </div>
+
+    </div>
+
+{% endblock body %}
+
+{% block js %}
+    {{ block.super}}
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+    {{ form.media.js }}
+
+{% endblock js %}

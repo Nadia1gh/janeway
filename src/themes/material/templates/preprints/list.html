@@ -1,0 +1,113 @@
+{% extends "core/base.html" %}
+
+{% comment %}
+  This template is deprecated. Preprint templates are in templates/repository/.
+{% endcomment %}
+
+{% load static %}
+{% load i18n %}
+{% load dates %}
+
+
+{% block title %}{% trans "All Preprints" %}{% endblock %}
+
+
+{% block body %}
+
+    <section id="content" aria-labelledby="all-preprints-title">
+        <div class="row">
+            <div class="col m12">
+                <h1 id="all-preprints-title">{% trans "All Preprints" %}</h1>
+                <hr aria-hidden="true" />
+            </div>
+            <div class="col m8">
+
+                {% for article in articles %}
+                    <div class="card">
+                        <div class="card-content">
+                            <span class="card-title">
+                                {% if article.is_remote %}
+                                    {% include "elements/doi_display.html" with doi=article.identifier.identifier title=article.title %}
+                                {% else %}
+                                    <a href="{% url 'preprints_article' article.pk %}">{{ article.title|safe }}</a>
+                                {% endif %}
+                            </span>
+                            <p>{% for author in article.authors.all %}{% if forloop.last %}
+                                {% if article.authors.all|length > 1 %} and
+                                {% endif %}{% endif %}{{ author.full_name }}
+                                {% if not forloop.last %}
+                                    {% if not forloop.counter == article.authors.all|length|add:-1 %},
+                                    {% endif %}{% endif %}{% endfor %}</p>
+                            <p><span class="date">
+                                <i aria-hidden="true" class="fa fa-calendar"></i> 
+                                <time datetime='{{ article.date_published|date:"Y-m-d" }}'>
+                                    <span role="time">{{ article.date_published|date_human }}</span>
+                                </time>
+                                <i aria-hidden="true" class="fa fa-paperclip"></i> {{ article.get_subject_area }}
+                        </div>
+
+                    </div>
+                    {% empty %}
+                    <p>{% trans "There are no preprints to display" %}</p>
+                {% endfor %}
+
+                <div class="pagination-block">
+                    <ul class="d-flex justify-content-center">
+                        {% if articles.has_previous %}
+                            <a href="?page={{ articles.previous_page_number }}"
+                               class="btn btn-outline-primary">
+                               {% include "elements/icons/page_previous.html" %}
+                            </a>
+                            &nbsp;{% endif %}
+                        {{ articles.page.page_range }}
+                        {% for page in articles.paginator.page_range %}
+                            <a href="?page={{ page }}"
+                               class="btn {% if articles.number == page %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ page }}</a>
+                            &nbsp;
+                        {% endfor %}
+                        {% if articles.has_next %}
+                            <a href="?page={{ articles.next_page_number }}"
+                               class="btn btn-outline-primary">
+                               {% include "elements/icons/page_next.html" %}
+                            </a>
+                        {% endif %}
+                    </ul>
+                </div>
+
+            </div>
+            <aside class="col m4 columns" data-sticky-container>
+                <div class="card">
+                    <div class="card-content">
+                        <div class="input-group">
+                            <form class="form-horizontal" method="POST" action="{% url 'repository_search' %}">
+                                {% csrf_token %}
+                                <div class="form-group">
+
+                                    <div class="input-field">
+                                        <i aria-hidden="true" class="fa fa-search prefix" ></i>
+                                        <input id="icon_prefix" type="text" class="validate" {% if search_term %}value="{{ search_term }}"{% endif %} name="search_term">
+                                        <label for="icon_prefix" class="">{% trans "Search Preprints" %}</label>
+                                    </div>
+                                    <p>
+                                        <small>{% trans "You can search by:" %}</small>
+                                    </p>
+                                    <small>
+                                        <ul>
+                                            <li>{% trans "Title" %}</li>
+                                            <li>{% trans "Keywords" %}</li>
+                                            <li>{% trans "Author Name" %}</li>
+                                            <li>{% trans "Author Institution" %}</li>
+                                        </ul>
+                                    </small>
+                                </div>
+                                <input type="submit" style="visibility: hidden;"/>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+    </section>
+
+{% endblock body %}

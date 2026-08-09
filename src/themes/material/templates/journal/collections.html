@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load hooks %}
+{% load i18n %}
+{% load dates %}
+
+{% block page_title %}{% trans issue_type.plural_name  %}{% endblock %}
+{% block title %}{% trans issue_type.plural_name  %}{% endblock %}
+
+{% block body %}
+<h1> {% trans issue_type.plural_name %} </h1>
+    <div class="row">
+        {% for collection in collections %}
+             <div class="col s12 m6 l4">
+                <div class="card large" style="height:550px">
+                  <div class="material-banner">
+                    <img
+                        class="material-banner-image"
+                        src="{{ collection.hero_image_url }}"
+                        alt="{% get_alt_text obj=collection file_path=collection.hero_image_url default=collection.issue_title|striptags %}"
+                    >
+                    <div class="material-banner-heading">
+                      <h2 id="collection-{{ collection.id }}" class="carousel-text-wrapper">
+                        {{ collection.issue_title }}
+                      </h2>
+                    </div>
+                  </div>
+                      <div class="card-content">
+                        <div class="scroll-y">
+                            <p>Published: {{ collection.date|date_human }}</p>
+                            {% if collection.short_description %}
+                            <p>{{ collection.short_description|safe }}</p>
+                            {% else %}
+                            <p>{{ collection.issue_description|safe }}</p>
+                            {% endif %}
+                        </div>
+                      </div>
+                        <div class="card-action">
+                            <a href="{% url 'journal_collection' collection.id %}"
+                                aria-describedby="collection-{{ collection.id }}"
+                                >
+                                {% trans "View Collection" %}
+                            </a>
+                        </div>
+                </div>
+            </div>
+        {% empty %}
+            <h2>{% trans "There are no collections to display" %}</h2>
+        {% endfor %}
+    </div>
+
+
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "apis/OAI_base.xml" %}
+{% block body %}
+<ListIdentifiers>
+
+{% for article in object_list %}
+    {% if is_preprints %}
+        {% include "apis/OAI_preprint_record_header.xml" with article=article %}
+    {% else %}
+        {% include "apis/OAI_record_header.xml" with article=article %}
+    {% endif %}
+{% endfor %}
+{% if resumption_token %}
+<resumptionToken completeListSize="{{ total }}">{{ resumption_token }}</resumptionToken>
+{% endif %}
+</ListIdentifiers>
+{% endblock body %}

@@ -1,0 +1,97 @@
+{% extends "core/base.html" %}
+{% load hooks %}
+{% load i18n %}
+{% load foundation %}
+
+{% hook 'filter_search' %}
+
+{% block page_title %}{% trans "Search" %}{% endblock %}
+
+{% block title %}{% trans "Search" %}{% endblock %}
+
+{% block body %}
+
+<section id="content">
+
+    <div class="row">
+        <div class="column large-12">
+            {% if search_term %}
+                <h1>Searching for: <i>{{ search_term }}</i></h1>
+            {% elif keyword %}
+                <h1>Keyword: <i>{{ keyword }}</i></h1>
+            {% else %}
+                <h1>{% trans 'Article Search Results' %}</h1>
+            {% endif %}
+        </div>
+        <section class="invisible-landmark" aria-label="Results">
+            <div class="columns large-8">
+                {% for article in articles %}
+                    {% include "elements/journal/box_article.html" with article=article %}
+                {% empty %}
+                    <p>{% trans 'No articles to display' %}.</p>
+                {% endfor %}
+                {% if articles %}
+                    {% include "elements/pagination.html" with form_id=form.id %}
+                {% endif %}
+            </div>
+        </section>
+        <div class="columns large-4">
+            <section class="invisible-landmark" aria-label="{% trans 'Search' %}">
+                <div class="card">
+                    <div class="card-block">
+                        <div>
+                            <p>
+                                {% blocktrans count result_count=page_obj.paginator.count %}
+                                    1 result
+                                {% plural %}
+                                    {{ result_count }} results
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                        <form method="GET" id="search_form">
+                        <div class="form-group">
+                            {% if not keyword %}
+                                {% include 'elements/forms/errors.html'  with form=form%}
+                                {{ form.article_search|foundation }}
+                                <div>
+                                    {{ form.title }}
+                                    {{ form.title.label_tag }}
+                                </div>
+                                <div>
+                                    {{ form.abstract }}
+                                    {{ form.abstract.label_tag }}
+                                </div>
+                                <div>
+                                    {{ form.authors }}
+                                    {{ form.authors.label_tag }}
+                                </div>
+                                <div>
+                                    {{ form.keywords }}
+                                    {{ form.keywords.label_tag }}
+                                </div>
+                                <div>
+                                    {{ form.full_text }}
+                                    {{ form.full_text.label_tag }}
+                                </div>
+                                <div>
+                                    {{ form.orcid }}
+                                    {{ form.orcid.label_tag }}
+                                </div>
+                                {{ form.sort|foundation }}
+                            {% else %}
+                                You are currently browsing by keyword. <a href="{% url 'search' %}">{% trans 'Search for an article' %}.</a>
+                            {% endif %}
+                        </div>
+                        {% if all_keywords %}
+                        {% endif %}
+                        <div class="form-group">
+                            <button type="submit" class="button">{% trans "Search" %}</button>
+                        </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</section>
+{% endblock %}

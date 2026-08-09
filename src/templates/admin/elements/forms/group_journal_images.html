@@ -1,0 +1,29 @@
+{% load i18n %}
+
+<div class="title-area">
+  <h2>{% trans "Journal Images" %}</h2>
+</div>
+<div class="content">
+  <div class="row expanded">
+    <div class="large-12 columns">
+      <p>
+        {% blocktrans trimmed %}
+          Each image can be uploaded individually. Once an image is uploaded, options to add alt text for
+          accessibility will appear alongside the preview. For details about where each image appears, see the
+          <a href="https://janeway.readthedocs.io/en/latest/manager/journal/index.html#images">Journal Images Settings</a>
+          documentation.
+        {% endblocktrans %}
+      </p>
+    </div>
+  </div>
+
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="header_image" field=attr_form.header_image journal=request.journal %}
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="default_large_image" field=attr_form.default_large_image journal=request.journal %}
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="press_image_override" field=attr_form.press_image_override journal=request.journal %}
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="default_cover_image" field=attr_form.default_cover_image journal=request.journal %}
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="default_thumbnail" field=attr_form.default_thumbnail journal=request.journal %}
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="favicon" field=attr_form.favicon journal=request.journal %}
+  {% include "admin/core/partials/journal_image/upload_field.html" with field_name="default_profile_image" field=attr_form.default_profile_image journal=request.journal %}
+</div>
+
+{% include "admin/core/partials/htmx.html" %}

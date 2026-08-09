@@ -1,0 +1,65 @@
+[
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Author",
+        "slug": "author"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Editor",
+        "slug": "editor"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Reviewer",
+        "slug": "reviewer"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Copyeditor",
+        "slug": "copyeditor"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Production Manager",
+        "slug": "production"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Typesetter",
+        "slug": "typesetter"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Proofing Manager",
+        "slug": "proofing-manager"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Proofreader",
+        "slug": "proofreader"
+    }
+},
+{
+    "model": "core.role",
+    "fields": {
+        "name": "Section Editor",
+        "slug": "section-editor"
+    }
+}
+]

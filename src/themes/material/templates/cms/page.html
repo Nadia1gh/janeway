@@ -1,0 +1,39 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block title %}{{ page.display_name }}{% endblock title %}
+
+{% block page_title %}{{ page.display_name }}{% endblock %}
+
+{% block body %}
+    <div class="row">
+        <div class="col {% if page.display_toc %}m9 s12{% else %}m12{% endif %}">
+            <div class="card">
+                <div id="cms-title" class="card-content">
+                    <h1 class="no-bottom-margin">{{ page.display_name }}</h1>
+                    <div class="divider spacer"></div>
+                    <div id="main_article" class="default-li">{{ page.content|safe }}</div>
+                </div>
+            </div>
+        </div>
+        {% if page.display_toc %}
+            <div class="col m3 hide-on-small-and-down toc-sticky">
+                <div class="card" id="toc-card">
+                    <section aria-labelledby="toc-title">
+                        <div class="card-content">
+                            <h2 id="toc-title">
+                                {% trans "Table of Contents" %}
+                            </h2>
+                            <ul id="toc" class="section table-of-contents">
+                            </ul>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+{% endblock body %}
+
+{% block js %}
+    <script src="{% static 'material/toc.js' %}"></script>
+{% endblock js %}

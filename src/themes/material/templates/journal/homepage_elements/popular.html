@@ -1,0 +1,13 @@
+{% load static %}
+{% load i18n %}
+
+<div class="row">
+    <section aria-labelledby="popular-title">
+        <div class="col m12">
+            <h2 id="popular-title" class="index-header">{% trans 'Most Popular Articles' %}</h2>
+        </div>
+        {% for article in popular_articles %}
+          {% include "journal/homepage_elements/article_list_item.html" %}
+        {% endfor %}
+    </section>
+</div>

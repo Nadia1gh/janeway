@@ -1,0 +1,57 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ journal_settings.styling.editorial_group_page_name }}{% endblock title %}
+{% block page_title %}{{ journal_settings.styling.editorial_group_page_name }}{% endblock page_title %}
+
+{% block body %}
+    <div class="row">
+        <div class="col m12">
+            <h1 class="no-bottom-margin">{{ journal_settings.styling.editorial_group_page_name }}</h1>
+        </div>
+    </div>
+
+    {% for group in editorial_groups %}
+        <div class="row eq-height-row">
+            {% if not journal_settings.styling.hide_editorial_group_names %}
+            <div class="col m12 default-li">
+                <h2>{{ group.name }}</h2>
+                {% if group.description %}<p>{{ group.description|safe }}</p>{% endif %}
+            </div>
+            {% endif %}
+            {% for member in group.members %}
+                <div class="col s12 m3">
+                    <div class="card editorial-card eq-height-col">
+                        {% include "common/elements/journal/editorial_team_image.html" with group=group classes="card-img-top card-img" card_wrapper="True" %}
+                        <div class="card-content" style="min-height: 190px;">
+                            <h3 id="member-{{ member.user.uuid }}" class="card-title small-card-title">{{ member.user.full_name }}</h3>
+                            <p>
+                                <small>{{ member.user.affiliation }}{% include "common/elements/journal/editorial_team_country.html" %}</small>
+                            </p>
+                            {% if member.user.enable_public_profile %}
+                                <p>
+                                    <small>
+                                            <a href="{% url 'core_public_profile' member.user.uuid %}"
+                                                aria-describedby="member-{{ member.user.uuid }}"
+                                                >
+                                                {% trans "View Profile" %}
+                                            </a>
+                                    </small>
+                                </p>
+                            {% endif %}
+                            {% include "elements/journal/editorial_social_content.html" with user=member.user %}
+                        </div>
+                    </div>
+                </div>
+                {% if forloop.counter|divisibleby:4 %}</div>
+                <div class="row eq-height-row">{% endif %}
+            {% endfor %}
+        </div>
+    {% endfor %}
+
+{% endblock body %}
+
+{% block js %}
+    <script src="{% static "common/js/material-eq-height.js" %}"></script>
+{% endblock %}

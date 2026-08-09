@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Crossref Login",
+    "value": "",
+    "is_boolean": false
+  },
+  {
+    "name": "Crossref Password",
+    "value": "",
+    "is_boolean": false
+  },
+  {
+    "name": "Crossref Test Mode",
+    "value": "",
+    "is_boolean": true
+  },
+  {
+    "name": "Display Preprint Editors",
+    "value": "",
+    "is_boolean": true
+  }
+  ,
+  {
+    "name": "Crossref Pattern",
+    "value": "10.xxxx/xxx",
+    "is_boolean": false
+  }
+]

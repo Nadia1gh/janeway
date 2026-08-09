@@ -1,0 +1,4 @@
+recommonmark
+Sphinx==7.1.2
+sphinx-rtd-theme
+markupsafe==2.0.1

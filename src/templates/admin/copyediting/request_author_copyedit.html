@@ -1,0 +1,39 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+
+{% block title %}Request Author Copyedit{% endblock %}
+{% block title-section %}
+    Request Author Copyedit #{{ author_review.id }}
+{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub.html" %}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/copyediting_base.html" with subpage="yes" %}
+    <li>Review Copyediting</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+
+    <div class="box">
+        <div class="title-area">
+            <h2>3. Notify the Author</h2>
+        </div>
+        <div class="content">
+            <p>You can send a message to the author or skip it.</p>
+            <div class="card">
+                {% include 'admin/elements/email_form.html' with form=form skip=1 %}
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block js %}
+    {{ block.super}}
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+    {{ form.media.js }}
+
+{% endblock js %}
+
+

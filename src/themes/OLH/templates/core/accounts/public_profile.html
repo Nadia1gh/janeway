@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ user.full_name }} {% trans "Profile" %}{% endblock %}
+
+{% block body %}
+	<section id="content">
+		<div class="row column">
+            <div class="large-3 columns">
+                {% include "common/elements/profile_image.html" with classes="thumbnail editorial-image" user=user %}
+                <h1>{{ user.full_name }}</h1>
+                {% if roles %}
+                  <p>
+                    <strong>{% trans "Roles" %}: </strong><br>
+                    {% for role in roles %}
+                      {{ role.role.name }}{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                  </p>
+                {% endif %}
+                {% if editorial_groups %}
+                  <p>
+                    <strong>{% trans "Editorial groups" %}: </strong><br>
+                    {% for membership in editorial_groups %}
+                      {{ membership.group.name }}
+                    {% endfor %}
+                  </p>
+                {% endif %}
+                {% if staff_groups %}
+                  <p>
+                    <strong>{% trans "Staff roles" %}: </strong><br>
+                    {{ staff_groups.first.job_title }}
+                    {% comment %}No support yet for multiple staff groups{% endcomment %}
+                  </p>
+                {% endif %}
+                {% include "common/elements/profile_affiliations.html" %}
+            </div>
+            <div class="large-9 columns">
+                {% if user.biography %}
+                    <h2>{% trans "Biography" %}</h2>
+                    <hr aria-hidden="true" />
+                    {{ user.biography|safe }}
+                    <br/><br/>
+                {% endif %}
+                {% if user.published_articles %}
+                    <h2>{% trans "Publications" %}</h2>
+                    <hr aria-hidden="true" />
+                    {% for article in user.published_articles %}
+                        {% include "elements/journal/box_article.html" with article=article level="shallow" %}
+                        <hr aria-hidden="true" />
+                    {% endfor %}
+                {% endif %}
+            </div>
+		</div>
+	</section>
+{% endblock %}

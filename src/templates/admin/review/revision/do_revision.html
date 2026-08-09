@@ -1,0 +1,144 @@
+{% extends "admin/core/base.html" %}
+{% load foundation %}
+{% load files %}
+{% load i18n %}
+
+{% block title %}Revision for {{ revision_request.article.title }}{% endblock title %}
+{% block title-section %}Revision for {{ revision_request.article.safe_title }}{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    {% include "elements/breadcrumbs/review_base.html" with subpage="yes" %}
+    <li>Revisions for {{ revision_request.article.safe_title }}</li>
+{% endblock breadcrumbs %}
+
+{% block body %}
+    <div class="large-12 columns">
+        <div class="box">
+            <div class="title-area">
+                <h2>Information</h2>
+            </div>
+            <div class="content">
+                <p>
+                    You have been asked to revise your article manuscript. If the editor has made peer review comments
+                    available for you to view, these will be visible below. The manuscript and any additional files are
+                    also listed below.
+                </p>
+              <p>
+                Editor <strong>{{ revision_request.editor.full_name }}</strong> has made
+                the decision <em>{{ revision_request.get_type_display }}</em> and provided
+                the following note:
+              </p>
+                {{ revision_request.editor_note|safe }}
+                <br/><br/>
+            </div>
+            <div class="title-area">
+                <h2>Reviews</h2>
+            </div>
+            <div class="content">
+                {% include "admin/elements/review/view_reviews.html" %}
+            </div>
+            <form method="POST" id="do_revision">
+                {% csrf_token %}
+                <div class="title-area">
+                    <h2>Files</h2>
+                </div>
+                <div class="content">
+                    <p>Your article files are listed below. You can use the 'Upload Revised File' button next to each
+                        file to upload a new version of the file, or use the 'Upload New File' button to upload a new
+                        file.</p>
+                    <a href="{% url 'revisions_upload_new_file' article.pk revision_request.pk %}"
+                       class="button"><i class="fa fa-upload">&nbsp;</i>Upload New File</a>
+                    <table class="scroll small">
+                        <tr>
+                            <th>Label</th>
+                            <th>Filename</th>
+                            <th>Type</th>
+                            <th>Uploaded</th>
+                            <th>Size</th>
+                            <th>Download</th>
+                            <th>Upload Revised File</th>
+                            <th>Delete</th>
+                        </tr>
+                        {% for file in article.manuscript_files.all %}
+                            <tr>
+                                <td>{{ file.label }}</td>
+                                <td>{{ file.original_filename }}</td>
+                                <td>Manuscript</td>
+                                <td>{{ file.date_uploaded|date:"Y-m-d G:i" }}</td>
+                                <td>{% file_size file article %}</td>
+                                <td><a href="?file_id={{ file.id }}"><i class="fa fa-download">&nbsp;</i></a></td>
+                                <td><a href="{% url 'revisions_replace_file' article.pk revision_request.pk file.pk %}"><i
+                                        class="fa fa-cloud-upload">&nbsp;</i></a></td>
+                                <td>
+                                    <button type="submit" name="delete" value="{{ file.id }}"
+                                            onclick="return confirm('Are you sure you want to delete this item?');"><i
+                                            class="fa fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        {% for file in article.data_figure_files.all %}
+                            <tr>
+                                <td>{{ file.label }}</td>
+                                <td>{{ file.original_filename }}</td>
+                                <td>Data/Figure</td>
+                                <td>{{ file.date_uploaded|date:"Y-m-d G:i" }}</td>
+                                <td>{% file_size file article %}</td>
+                                <td><a href="?file_id={{ file.id }}"><i class="fa fa-download">&nbsp;</i></a></td>
+                                <td><a href="{% url 'revisions_replace_file' article.pk revision_request.pk file.pk %}"><i
+                                        class="fa fa-cloud-upload">&nbsp;</i></a></td>
+                                <td>
+                                    <button type="submit" name="delete" value="{{ file.id }}"
+                                            onclick="return confirm('Are you sure you want to delete this item?');"><i
+                                            class="fa fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+                <div class="title-area">
+                    <h2>Responses</h2>
+                </div>
+                <div class="content">
+                    <p>In this section you can add a covering letter for the editor and a response letter that will be shared with the reviewers.</p>
+                    {% include "elements/forms/errors.html" with form=form %}
+                    <div class="row expanded">
+                        <div class="large-6 medium-12 columns">
+                            {{ form.author_note|foundation }}
+                        </div>
+                        <div class="large-6 medium-12 columns">
+                            {{ form.response_letter|foundation }}
+                        </div>
+                    </div>
+
+                    <p>If you want to save your responses and
+                        come back later, click the 'Save Responses'
+                        button below. Once you are ready to
+                        send your letters, see the 'Finishing Up'
+                        section below.</p>
+                    <button class="button success" name="save">
+                        Save Responses
+                    </button>
+                </div>
+                <div class="title-area">
+                    <h2>Finishing Up</h2>
+                </div>
+                <div class="content">
+                    <p>{% trans "When you have completed your revisions and finished writing your covering letter, click the 'Submit Revisions' button below to finish. Please note that you will not be able to make any further changes to your letter or revisions once you click 'Submit Revisions'" %}</p>
+                    <button class="button success" name="{{ form.CONFIRMABLE_BUTTON_NAME }}">Submit Revisions</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if form.modal %}
+        {% include "admin/elements/confirm_modal.html" with modal=form.modal form_id="do_revision" %}
+    {% endif %}
+
+{% endblock body %}
+
+{% block js %}
+    {% if form.modal %}
+        {% include "admin/elements/open_modal.html" with target=form.modal.id %}
+    {% endif %}
+{% endblock js %}

@@ -1,0 +1,32 @@
+{% extends "admin/core/base.html" %}
+{% load static %}
+{% load settings %}
+
+
+{% block css %}<link href="{% static "common/css/jquery-te-1.4.0.css" %}" rel="stylesheet">{% endblock %}
+{% block title %}Editor Assignment Notification{% endblock %}
+{% block title-sub %}{% include "admin/elements/article_title_sub.html" %}{% endblock %}
+
+{% block body %}
+
+    <div class="box">
+        <div class="title-area">
+            <h2>3. Notify the Copyeditor</h2>
+        </div>
+        <div class="content">
+            <p>You can send a message to the copyeditor or skip it.</p>
+            <div class="card">
+                {% include 'admin/elements/email_form.html' with form=form skip=1 %}
+            </div>
+        </div>
+    </div>
+
+{% endblock body %}
+{% block js %}
+    {{ block.super}}
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.11.0/themes/smoothness/jquery-ui.css">
+    {{ form.media.js }}
+
+{% endblock js %}
+
+

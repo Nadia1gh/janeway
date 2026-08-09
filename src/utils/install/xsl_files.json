@@ -1,0 +1,11 @@
+[
+   {
+      "fields" : {
+         "comments" : null,
+         "date_uploaded" : "2019-11-04T10:59:37.247Z",
+         "file" : "default.xsl",
+         "label" : ""
+      },
+      "model" : "core.xslfile"
+   }
+]

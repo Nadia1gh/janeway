@@ -1,0 +1,17 @@
+{% load i18n %}
+
+<div class="row">
+    <div class="col {% if not show_sidebar %}m12{% else %}m8{% endif %} s12">
+        {% include "elements/journal/issue_top.html" with level=level %}
+
+        {% include "elements/journal/issue_block.html" with level=level %}
+
+        {% include "elements/journal/issue_paginator.html" %}
+    </div>
+
+    {% if show_sidebar %}
+        {% include "elements/journal/issue_sidebar.html" %}
+    {% endif %}
+</div>
+
+

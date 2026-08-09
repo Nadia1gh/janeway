@@ -1,0 +1,85 @@
+{% load pages %}
+
+<div class="row">
+    <div class="col s12 m6 l7">
+        {% if is_paginated %}
+            <input hidden
+                id="page_input"
+                name="page"
+                form="{{ form_id }}"
+                value="{{ page_obj.number }}">
+            <ul class="pagination">
+                {% if page_obj.has_previous %}
+                    <li class="waves-effect">
+                        {% with page_number=page_obj.previous_page_number %}
+                            <a
+                                href="#"
+                                onclick="changePage(form_id='{{ facet_form.id }}', page_number='{{ page_number }}'); return false;">
+                                <i aria-hidden="true" class="fa fa-chevron-left" ></i>
+                                <span class="sr-only">{% trans 'Previous page.' %}</span>
+                            </a>
+                        {% endwith %}
+                    </li>
+                {% endif %}
+
+                {% for page in page_obj|slice_pages_with_first_last_ellipsis:2 %}
+                    {% if page == '...' %}
+                        <li>
+                            <span class="sr-only">{% trans 'ellipsis' %}</span>
+                            <span>...</span>
+                        </li>
+                    {% else %}
+                        <li class="waves-effect {% if page_obj.number == page.number %}active{% endif %}">
+                            <a
+                                href="#"
+                                onclick="changePage(form_id='{{ facet_form.id }}', page_number='{{ page.number }}'); return false;">
+                                <span class="sr-only">{% trans 'Page.' %}</span>
+                                {{ page.number }}
+                            </a>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                    <li class="waves-effect">
+                        {% with page_number=page_obj.next_page_number %}
+                            <a
+                                href="#"
+                                onclick="changePage(form_id='{{ facet_form.id }}', page_number='{{ page_number }}'); return false;">
+                                <i aria-hidden="true" class="fa fa-chevron-right" ></i>
+                                <span class="sr-only">{% trans 'Next page.' %}</span>
+                            </a>
+                        {% endwith %}
+                    </li>
+                {% endif %}
+            </ul>
+        {% endif %}
+    </div>
+    <div class="input-field col s12 m6 l5">
+        <select
+            onchange="this.form.submit()"
+            name="paginate_by"
+            id="paginate_by"
+            form={{ form_id }}>
+            <option value="10" {% if paginate_by == "10" %}selected{% endif %}>10</option>
+            <option value="25" {% if paginate_by == "25" %}selected{% endif %}>25</option>
+            <option value="50" {% if paginate_by == "50" %}selected{% endif %}>50</option>
+            <option value="100" {% if paginate_by == "100" %}selected{% endif %}>100</option>
+            {% if page_obj.paginator %}
+                <option value="all" {% if paginate_by == "all" %}selected{% endif %}>all</option>
+            {% endif %}
+        </select>
+        <label for="paginate_by">
+            {% trans 'articles per page' %}
+        </label>
+    </div>
+</div>
+
+{% block js %}
+<script>
+  function changePage(form_id, page) {
+      document.getElementById('page_input').setAttribute('value', page)
+      document.getElementById(form_id).submit()
+  }
+</script>
+{% endblock js %}

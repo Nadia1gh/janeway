@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% load hooks %}
+{% load i18n %}
+{% load dates %}
+
+{% block page_title %}{% trans issue_type.plural_name  %}{% endblock %}
+{% block title %}{% trans issue_type.plural_name  %}{% endblock %}
+
+{% block body %}
+
+    <section id="content">
+        <div class="row">
+            <div class="large-12 columns">
+                <h1>{% trans issue_type.plural_name %}</h1>
+            </div>
+            <div class="row" data-equalizer data-equalize-on="medium">
+                {% for collection in collections %}
+                    <div class="large-4 columns {% if forloop.last %}end{% endif %}">
+                        <div class="box collection " data-equalizer-watch>
+                            <a href="{% url 'journal_collection' collection.pk %}" class="box-link"
+                                aria-labelledby="{{ collection.pk }}-box-link" 
+                                aria-describedby="{{ collection.pk }}-box-link-details {{ collection.pk }}-box-link-description {{ collection.pk }}-box-link-image">
+                            </a>
+                            <div class="olh-banner">
+                              <img
+                                src="{{ collection.hero_image_url }}"
+                                alt="{{ collection.best_large_image_alt_text }}"
+                                aria-hidden="true"
+                                class="olh-banner-image"
+                              >
+                            </div>
+                            <div class="content" aria-hidden="true">
+                                <p id="{{ collection.pk }}-box-link-details">{% trans 'Collection' %}<br/>
+                                    <small>{% trans "Published" %}: {{ collection.date|date_human }}</small>
+                                </p>
+                                <h2 id="{{ collection.pk }}-box-link">{{ collection.issue_title }}</h2>
+                                {% if collection.short_description %}
+                                <p id="{{ collection.pk }}-box-link-description">{{ collection.short_description|safe }}</p>
+                                {% else %}
+                                <p id="{{ collection.pk }}-box-link-description">{{ collection.issue_description|safe }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% if forloop.counter|divisibleby:3 %}</div>
+                        <div class="row">{% endif %}
+                {% endfor %}
+                </div>
+    </section>
+{% endblock %}

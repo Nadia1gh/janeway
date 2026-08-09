@@ -1,0 +1,20 @@
+{% load orcid %}
+{% load static %}
+{% load next_url %}
+
+{% if settings.ENABLE_ORCID %}
+    {% if orcid %}
+        <p>
+            ORCID                            
+            <a href="{{ orcid }}"><img alt="ORCID logo" src="{% static 'common/img/icons/orcid.png' %}"> {{ orcid }}</a>&nbsp;
+            [<a href="{% url_with_next 'core_register' %}">remove</a>]
+        </p>
+    {% else %}
+        <a
+          href="{% url_with_next_and_orcid_action 'core_login_orcid' action='register' %}"
+          class="{{ button_classes|default:"orcid-button" }}">
+          <img alt="ORCID logo" src="{% static 'common/img/icons/orcid.png' %}">
+          {% trans "Register with ORCiD" %}
+        </a>
+    {% endif %}
+{% endif %}

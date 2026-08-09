@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+
+{% comment %}
+  This template is deprecated. Preprint templates are in templates/repository/.
+{% endcomment %}
+
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Editorial Team" %}{% endblock title %}
+{% block page_title %}{% trans "Editorial Team" %}{% endblock page_title %}
+
+{% block body %}
+
+    <h1>{% trans "Subject Area Editors" %}</h1>
+    <div class="divider"></div>
+    {% for subject in subjects %}
+        <div class="row">
+            <div class="col m12">
+                <h2>{{ subject.name }}</h2>
+            </div>
+            {% for editor in subject.editors.all %}
+                <div class="col s12 m4">
+                    <div class="card">
+                        <div class="card-image">
+                            <img src="
+                                    {% if editor.profile_image %}{{ editor.profile_image.url }}{% else %}{% static "common/img/icons/users.png" %}{% endif %}">
+                            {% if user.enable_public_profile %}
+                                <a href="{% url 'core_public_profile' editor.uuid %}"
+                                   class="btn-floating halfway-fab waves-effect waves-light red"
+                                   aria-describedby="editor-{{ editor.uuid }}"
+                                   >
+                                   <i class="fa fa-user" aria-hidden="true"></i>
+                                   <span class="sr-only">{% trans "User profile" %}</span>
+                                </a>
+                            {% endif %}
+                        </div>
+                        <div class="card-content" style="min-height: 180px;">
+                            <span id="editor-{{ editor.uuid }}" class="card-title">{{ editor.full_name }}</span>
+                            <p>
+                                <small>{{ editor.affiliation }}</small>
+                            </p>
+                            {% include "elements/journal/editorial_social_content.html" with user=editor %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endfor %}
+
+{% endblock body %}
