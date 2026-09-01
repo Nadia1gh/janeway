@@ -133,10 +133,6 @@
                   </h2>
                   {% include "common/elements/journal/article_authors_ul.html" %}
                 {% endif %}
-
-                {% if article.is_published or proofing %}
-                  {% include "elements/journal/share.html" %}
-                {% endif %}
                 <h2>Author details</h2>
                 {% include "elements/journal/article_authors_full.html" %}
                 {% if article.is_published or proofing %}
