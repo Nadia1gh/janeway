@@ -289,6 +289,45 @@ class DraftAdmin(admin_utils.ArticleFKModelAdmin):
     raw_id_fields = ("article", "editor", "section_editor")
 
 
+
+class ReviewerPoolMembershipAdmin(admin.ModelAdmin):
+    list_display = (
+        "pk",
+        "account",
+        "journal",
+        "status",
+        "source",
+        "is_available",
+        "created",
+        "updated",
+    )
+
+    list_filter = (
+        "journal",
+        "status",
+        "source",
+        "is_available",
+    )
+
+    search_fields = (
+        "account__email",
+        "account__first_name",
+        "account__last_name",
+        "journal__code",
+        "notes",
+    )
+
+    raw_id_fields = (
+        "account",
+        "journal",
+    )
+
+    readonly_fields = (
+        "created",
+        "updated",
+    )
+
+
 admin_list = [
     (models.EditorAssignment, EditorialAdmin),
     (models.ReviewAssignment, ReviewAdmin),
@@ -298,6 +337,7 @@ admin_list = [
     (models.ReviewAssignmentAnswer, AnswerAdmin),
     (models.ReviewRound, ReviewRoundAdmin),
     (models.ReviewerRating, RatingAdmin),
+    (models.ReviewerPoolMembership, ReviewerPoolMembershipAdmin),
     (models.RevisionAction, RevisionActionAdmin),
     (models.RevisionRequest, RevisionAdmin),
     (models.EditorOverride, EditorOverrideAdmin),
