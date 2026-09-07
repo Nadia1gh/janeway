@@ -152,8 +152,24 @@ def get_reviewer_candidates(article, user=None, reviewers_to_exclude=None):
                 reviewer.pk,
             )
 
+    legacy_reviewer_pks = article.journal.users_with_role("reviewer").values_list(
+        "pk",
+        flat=True,
+    )
+    pool_reviewer_pks = get_reviewer_pool_candidates(article).values_list(
+        "pk",
+        flat=True,
+    )
+
+    candidate_queryset = core_models.Account.objects.filter(
+        models.Q(pk__in=legacy_reviewer_pks)
+        | models.Q(pk__in=pool_reviewer_pks)
+    ).distinct()
+
     return get_reviewers(
-        article, article.journal.users_with_role("reviewer"), reviewer_pks_to_exclude
+        article,
+        candidate_queryset,
+        reviewer_pks_to_exclude,
     )
 
 
@@ -1054,3 +1070,25 @@ def ensure_reviewer_pool_candidate(article, account):
     )
 
     return membership
+
+def get_reviewer_pool_candidates(article, exclude_pks=None):
+    """
+    Return reviewer-pool accounts eligible for consideration
+    for the article's journal.
+    """
+    from review import models as review_models
+
+    exclude_pks = exclude_pks or []
+
+    if not article or not article.journal:
+        return core_models.Account.objects.none()
+
+    return core_models.Account.objects.filter(
+        reviewer_pool_memberships__journal=article.journal,
+        reviewer_pool_memberships__status=(
+            review_models.ReviewerPoolMembership.STATUS_ACTIVE
+        ),
+        reviewer_pool_memberships__is_available=True,
+    ).exclude(
+        pk__in=exclude_pks,
+    ).distinct()
