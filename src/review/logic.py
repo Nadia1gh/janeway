@@ -670,8 +670,8 @@ def quick_assign(request, article, reviewer_user=None):
     else:
         user = reviewer_user
 
-    if user not in request.journal.users_with_role("reviewer"):
-        errors.append("This user is not a reviewer for this journal.")
+    if not is_eligible_reviewer(article, user):
+        errors.append("This user is not eligible as a reviewer for this journal.")
 
     if not errors:
         new_assignment = models.ReviewAssignment.objects.create(
@@ -1071,6 +1071,7 @@ def ensure_reviewer_pool_candidate(article, account):
 
     return membership
 
+
 def get_reviewer_pool_candidates(article, exclude_pks=None):
     """
     Return reviewer-pool accounts eligible for consideration
@@ -1092,3 +1093,22 @@ def get_reviewer_pool_candidates(article, exclude_pks=None):
     ).exclude(
         pk__in=exclude_pks,
     ).distinct()
+
+
+def is_eligible_reviewer(article, account):
+    """
+    Return whether an account can be assigned as a reviewer
+    for the article's journal.
+    """
+    if not article or not article.journal or not account:
+        return False
+
+    if account in article.journal.users_with_role("reviewer"):
+        return True
+
+    return models.ReviewerPoolMembership.objects.filter(
+        account=account,
+        journal=article.journal,
+        status=models.ReviewerPoolMembership.STATUS_ACTIVE,
+        is_available=True,
+    ).exists()
