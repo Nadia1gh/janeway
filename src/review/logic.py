@@ -1030,3 +1030,27 @@ def get_distinct_reviews(reviews):
             reviewers.add(review.reviewer)
 
     return reviews_to_return
+
+
+def ensure_reviewer_pool_candidate(article, account):
+    """
+    Ensure an article author is present in the journal reviewer pool.
+
+    Existing memberships are preserved unchanged.
+    """
+    from review import models as review_models
+
+    if not article or not article.journal or not account:
+        return None
+
+    membership, _ = review_models.ReviewerPoolMembership.objects.get_or_create(
+        account=account,
+        journal=article.journal,
+        defaults={
+            "status": review_models.ReviewerPoolMembership.STATUS_CANDIDATE,
+            "source": review_models.ReviewerPoolMembership.SOURCE_AUTHOR,
+            "is_available": True,
+        },
+    )
+
+    return membership
