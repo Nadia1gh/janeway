@@ -253,6 +253,21 @@ urlpatterns = [
     # Review forms
     re_path(r"^manager/forms/$", views.review_forms, name="review_review_forms"),
     re_path(
+        r"^manager/reviewer-pool/$",
+        views.reviewer_pool,
+        name="review_reviewer_pool",
+    ),
+    re_path(
+        r"^manager/reviewer-pool/add/$",
+        views.add_reviewer_pool_member,
+        name="review_add_reviewer_pool_member",
+    ),
+    re_path(
+        r"^manager/reviewer-pool/(?P<membership_id>\d+)/edit/$",
+        views.edit_reviewer_pool_member,
+        name="review_edit_reviewer_pool_member",
+    ),
+    re_path(
         r"^manager/form/(?P<form_id>\d+)/$",
         views.edit_review_form,
         name="edit_review_form",
