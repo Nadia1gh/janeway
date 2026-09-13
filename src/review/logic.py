@@ -1072,27 +1072,11 @@ def ensure_reviewer_pool_candidate(article, account):
     return membership
 
 
-def get_reviewer_pool_candidates(article, exclude_pks=None):
-    """
-    Return reviewer-pool accounts eligible for consideration
-    for the article's journal.
-    """
-    from review import models as review_models
+def _is_article_author(article, account):
+    if not article or not account:
+        return False
 
-    exclude_pks = exclude_pks or []
-
-    if not article or not article.journal:
-        return core_models.Account.objects.none()
-
-    return core_models.Account.objects.filter(
-        reviewer_pool_memberships__journal=article.journal,
-        reviewer_pool_memberships__status=(
-            review_models.ReviewerPoolMembership.STATUS_ACTIVE
-        ),
-        reviewer_pool_memberships__is_available=True,
-    ).exclude(
-        pk__in=exclude_pks,
-    ).distinct()
+    return article.author_accounts.filter(pk=account.pk).exists()
 
 
 def is_eligible_reviewer(article, account):
@@ -1101,6 +1085,9 @@ def is_eligible_reviewer(article, account):
     for the article's journal.
     """
     if not article or not article.journal or not account:
+        return False
+
+    if _is_article_author(article, account):
         return False
 
     if account in article.journal.users_with_role("reviewer"):
@@ -1112,3 +1099,33 @@ def is_eligible_reviewer(article, account):
         status=models.ReviewerPoolMembership.STATUS_ACTIVE,
         is_available=True,
     ).exists()
+
+
+def get_reviewer_pool_candidates(article, exclude_pks=None):
+    """
+    Return reviewer-pool accounts eligible for consideration
+    for the article's journal.
+    """
+    from review import models as review_models
+
+    exclude_pks = set(exclude_pks or [])
+
+    if not article or not article.journal:
+        return core_models.Account.objects.none()
+
+    author_pks = article.author_accounts.values_list("pk", flat=True)
+
+    return (
+        core_models.Account.objects.filter(
+            reviewer_pool_memberships__journal=article.journal,
+            reviewer_pool_memberships__status=(
+                review_models.ReviewerPoolMembership.STATUS_ACTIVE
+            ),
+            reviewer_pool_memberships__is_available=True,
+        )
+        .exclude(
+            models.Q(pk__in=exclude_pks)
+            | models.Q(pk__in=author_pks)
+        )
+        .distinct()
+    )
