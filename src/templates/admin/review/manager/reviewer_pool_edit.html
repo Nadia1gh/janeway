@@ -1,0 +1,77 @@
+```django
+{% extends "admin/core/base.html" %}
+{% load foundation %}
+
+{% block title %}
+    {% if active == "add" %}
+        Add Reviewer
+    {% else %}
+        Edit Reviewer
+    {% endif %}
+{% endblock title %}
+
+{% block title-section %}
+    {% if active == "add" %}
+        Add Reviewer to Reviewer Pool
+    {% else %}
+        Edit Reviewer Pool Membership
+    {% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li><a href="{% url 'review_reviewer_pool' %}">Reviewer Pool</a></li>
+
+    {% if active == "add" %}
+        <li>Add Reviewer</li>
+    {% else %}
+        <li>Edit Reviewer</li>
+    {% endif %}
+{% endblock %}
+
+{% block body %}
+
+<div class="row">
+    <div class="small-12 medium-8 columns">
+
+        <form method="post">
+            {% csrf_token %}
+
+            {{ form.non_field_errors }}
+
+            {% for field in form %}
+                <div class="form-row">
+                    {{ field.errors }}
+
+                    <label for="{{ field.id_for_label }}">
+                        {{ field.label }}
+                    </label>
+
+                    {{ field }}
+
+                    {% if field.help_text %}
+                        <small>{{ field.help_text }}</small>
+                    {% endif %}
+                </div>
+            {% endfor %}
+
+            <div class="button-group">
+                <button type="submit" class="button">
+                    Save
+                </button>
+
+                <a
+                    href="{% url 'review_reviewer_pool' %}"
+                    class="button hollow"
+                >
+                    Cancel
+                </a>
+            </div>
+        </form>
+
+    </div>
+</div>
+
+{% endblock body %}
+```

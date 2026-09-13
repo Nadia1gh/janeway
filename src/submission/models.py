@@ -41,6 +41,8 @@ from django.utils.html import mark_safe
 from django.utils.html import strip_tags
 import swapper
 
+from django.db.models.signals import m2m_changed, post_save, pre_delete
+
 from core.file_system import JanewayFileSystemStorage
 from core.model_utils import (
     AbstractLastModifiedModel,
@@ -3469,3 +3471,18 @@ def backwards_compat_authors(
 
 
 m2m_changed.connect(backwards_compat_authors, sender=Article.authors.through)
+
+@receiver(post_save, sender=FrozenAuthor)
+def add_author_to_reviewer_pool(sender, instance, **kwargs):
+    """
+    Add linked article authors to the journal reviewer pool.
+    """
+    if not instance.article or not instance.author:
+        return
+
+    from review import logic as review_logic
+
+    review_logic.ensure_reviewer_pool_candidate(
+        instance.article,
+        instance.author,
+    )

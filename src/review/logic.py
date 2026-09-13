@@ -152,8 +152,24 @@ def get_reviewer_candidates(article, user=None, reviewers_to_exclude=None):
                 reviewer.pk,
             )
 
+    legacy_reviewer_pks = article.journal.users_with_role("reviewer").values_list(
+        "pk",
+        flat=True,
+    )
+    pool_reviewer_pks = get_reviewer_pool_candidates(article).values_list(
+        "pk",
+        flat=True,
+    )
+
+    candidate_queryset = core_models.Account.objects.filter(
+        models.Q(pk__in=legacy_reviewer_pks)
+        | models.Q(pk__in=pool_reviewer_pks)
+    ).distinct()
+
     return get_reviewers(
-        article, article.journal.users_with_role("reviewer"), reviewer_pks_to_exclude
+        article,
+        candidate_queryset,
+        reviewer_pks_to_exclude,
     )
 
 
@@ -654,8 +670,8 @@ def quick_assign(request, article, reviewer_user=None):
     else:
         user = reviewer_user
 
-    if user not in request.journal.users_with_role("reviewer"):
-        errors.append("This user is not a reviewer for this journal.")
+    if not is_eligible_reviewer(article, user):
+        errors.append("This user is not eligible as a reviewer for this journal.")
 
     if not errors:
         new_assignment = models.ReviewAssignment.objects.create(
@@ -1030,3 +1046,86 @@ def get_distinct_reviews(reviews):
             reviewers.add(review.reviewer)
 
     return reviews_to_return
+
+
+def ensure_reviewer_pool_candidate(article, account):
+    """
+    Ensure an article author is present in the journal reviewer pool.
+
+    Existing memberships are preserved unchanged.
+    """
+    from review import models as review_models
+
+    if not article or not article.journal or not account:
+        return None
+
+    membership, _ = review_models.ReviewerPoolMembership.objects.get_or_create(
+        account=account,
+        journal=article.journal,
+        defaults={
+            "status": review_models.ReviewerPoolMembership.STATUS_CANDIDATE,
+            "source": review_models.ReviewerPoolMembership.SOURCE_AUTHOR,
+            "is_available": True,
+        },
+    )
+
+    return membership
+
+
+def _is_article_author(article, account):
+    if not article or not account:
+        return False
+
+    return article.author_accounts.filter(pk=account.pk).exists()
+
+
+def is_eligible_reviewer(article, account):
+    """
+    Return whether an account can be assigned as a reviewer
+    for the article's journal.
+    """
+    if not article or not article.journal or not account:
+        return False
+
+    if _is_article_author(article, account):
+        return False
+
+    if account in article.journal.users_with_role("reviewer"):
+        return True
+
+    return models.ReviewerPoolMembership.objects.filter(
+        account=account,
+        journal=article.journal,
+        status=models.ReviewerPoolMembership.STATUS_ACTIVE,
+        is_available=True,
+    ).exists()
+
+
+def get_reviewer_pool_candidates(article, exclude_pks=None):
+    """
+    Return reviewer-pool accounts eligible for consideration
+    for the article's journal.
+    """
+    from review import models as review_models
+
+    exclude_pks = set(exclude_pks or [])
+
+    if not article or not article.journal:
+        return core_models.Account.objects.none()
+
+    author_pks = article.author_accounts.values_list("pk", flat=True)
+
+    return (
+        core_models.Account.objects.filter(
+            reviewer_pool_memberships__journal=article.journal,
+            reviewer_pool_memberships__status=(
+                review_models.ReviewerPoolMembership.STATUS_ACTIVE
+            ),
+            reviewer_pool_memberships__is_available=True,
+        )
+        .exclude(
+            models.Q(pk__in=exclude_pks)
+            | models.Q(pk__in=author_pks)
+        )
+        .distinct()
+    )

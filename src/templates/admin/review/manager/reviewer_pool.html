@@ -1,0 +1,92 @@
+```django
+{% extends "admin/core/base.html" %}
+{% load foundation %}
+
+{% block title %}Reviewer Pool{% endblock title %}
+{% block title-section %}Reviewer Pool{% endblock %}
+
+{% block breadcrumbs %}
+    {{ block.super }}
+    <li><a href="{% url 'core_manager_index' %}">Manager</a></li>
+    <li><a href="{% url 'review_reviewer_pool' %}">Reviewer Pool</a></li>
+{% endblock %}
+
+{% block body %}
+
+<div class="row">
+    <div class="small-12 columns">
+
+        <div class="flex-space-between align-middle">
+            <h3>Reviewer Pool</h3>
+
+            <a
+                href="{% url 'review_add_reviewer_pool_member' %}"
+                class="button"
+            >
+                Add Reviewer
+            </a>
+        </div>
+
+        {% if memberships %}
+            <table class="hover stack">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Available</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for membership in memberships %}
+                        <tr>
+                            <td>
+                                {{ membership.account.full_name }}
+                            </td>
+
+                            <td>
+                                {{ membership.account.email }}
+                            </td>
+
+                            <td>
+                                {{ membership.get_status_display }}
+                            </td>
+
+                            <td>
+                                {{ membership.get_source_display }}
+                            </td>
+
+                            <td>
+                                {% if membership.is_available %}
+                                    Yes
+                                {% else %}
+                                    No
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <a
+                                    href="{% url 'review_edit_reviewer_pool_member' membership_id=membership.pk %}"
+                                    class="button hollow small"
+                                >
+                                    Edit
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="callout primary">
+                No reviewers are currently in the pool for this journal.
+            </div>
+        {% endif %}
+
+    </div>
+</div>
+
+{% endblock body %}
+```

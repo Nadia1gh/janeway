@@ -729,6 +729,80 @@ class ReviewerRating(models.Model):
         )
 
 
+class ReviewerPoolMembership(models.Model):
+    STATUS_CANDIDATE = "candidate"
+    STATUS_ACTIVE = "active"
+    STATUS_INACTIVE = "inactive"
+    STATUS_BLOCKED = "blocked"
+
+    STATUS_CHOICES = (
+        (STATUS_CANDIDATE, "Candidate"),
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_INACTIVE, "Inactive"),
+        (STATUS_BLOCKED, "Blocked"),
+    )
+
+    SOURCE_AUTHOR = "author"
+    SOURCE_MANUAL = "manual"
+    SOURCE_PREVIOUS_REVIEWER = "previous_reviewer"
+    SOURCE_IMPORT = "import"
+    SOURCE_EDITORIAL_BOARD = "editorial_board"
+    SOURCE_EXTERNAL = "external"
+
+    SOURCE_CHOICES = (
+        (SOURCE_AUTHOR, "Author"),
+        (SOURCE_MANUAL, "Manual"),
+        (SOURCE_PREVIOUS_REVIEWER, "Previous Reviewer"),
+        (SOURCE_IMPORT, "Import"),
+        (SOURCE_EDITORIAL_BOARD, "Editorial Board"),
+        (SOURCE_EXTERNAL, "External"),
+    )
+
+    account = models.ForeignKey(
+        "core.Account",
+        on_delete=models.CASCADE,
+        related_name="reviewer_pool_memberships",
+    )
+
+    journal = models.ForeignKey(
+        "journal.Journal",
+        on_delete=models.CASCADE,
+        related_name="reviewer_pool_memberships",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_CANDIDATE,
+    )
+
+    source = models.CharField(
+        max_length=30,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_MANUAL,
+    )
+
+    is_available = models.BooleanField(default=True)
+
+    notes = models.TextField(blank=True)
+
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("account", "journal"),
+                name="unique_reviewer_pool_membership",
+            )
+        ]
+        ordering = ("journal", "account")
+
+    def __str__(self):
+        return f"{self.account} - {self.journal} ({self.status})"
+
+
+
 class RevisionAction(models.Model):
     text = model_utils.JanewayBleachField()
     logged = models.DateTimeField(default=None, null=True, blank=True)

@@ -34,6 +34,7 @@ from review.const import (
     ReviewerDecisions as RD,
 )
 from security.decorators import (
+    editor_or_journal_manager_required,
     editor_user_required,
     reviewer_user_required,
     reviewer_user_for_assignment_required,
@@ -2922,6 +2923,118 @@ def review_forms(request):
     }
 
     return render(request, template, context)
+
+
+@editor_or_journal_manager_required
+def reviewer_pool(request):
+    """
+    Displays the reviewer pool for the current journal.
+    """
+    memberships = (
+        models.ReviewerPoolMembership.objects.filter(
+            journal=request.journal,
+        )
+        .select_related("account", "journal")
+        .order_by(
+            "status",
+            "account__last_name",
+            "account__first_name",
+            "account__email",
+        )
+    )
+
+    template = "review/manager/reviewer_pool.html"
+    context = {
+        "memberships": memberships,
+    }
+
+    return render(request, template, context)
+
+
+@editor_or_journal_manager_required
+def add_reviewer_pool_member(request):
+    """
+    Adds an existing account to the reviewer pool for the current journal.
+    """
+    form = forms.ReviewerPoolMembershipAddForm()
+
+    if request.method == "POST":
+        form = forms.ReviewerPoolMembershipAddForm(request.POST)
+
+        if form.is_valid():
+            account = form.cleaned_data["account"]
+
+            if models.ReviewerPoolMembership.objects.filter(
+                account=account,
+                journal=request.journal,
+            ).exists():
+                form.add_error(
+                    "account",
+                    "This account is already in the reviewer pool.",
+                )
+            else:
+                membership = form.save(commit=False)
+                membership.journal = request.journal
+                membership.save()
+
+                messages.add_message(
+                    request,
+                    messages.SUCCESS,
+                    "Reviewer pool member added.",
+                )
+
+                return redirect(reverse("review_reviewer_pool"))
+
+    template = "review/manager/reviewer_pool_edit.html"
+    context = {
+        "form": form,
+        "active": "add",
+    }
+
+    return render(request, template, context)
+
+
+@editor_or_journal_manager_required
+def edit_reviewer_pool_member(request, membership_id):
+    """
+    Updates a reviewer pool membership belonging to the current journal.
+    """
+    membership = get_object_or_404(
+        models.ReviewerPoolMembership,
+        pk=membership_id,
+        journal=request.journal,
+    )
+
+    form = forms.ReviewerPoolMembershipForm(
+        instance=membership,
+    )
+
+    if request.method == "POST":
+        form = forms.ReviewerPoolMembershipForm(
+            request.POST,
+            instance=membership,
+        )
+
+        if form.is_valid():
+            form.save()
+
+            messages.add_message(
+                request,
+                messages.SUCCESS,
+                "Reviewer pool member updated.",
+            )
+
+            return redirect(reverse("review_reviewer_pool"))
+
+    template = "review/manager/reviewer_pool_edit.html"
+    context = {
+        "form": form,
+        "membership": membership,
+        "active": "edit",
+    }
+
+    return render(request, template, context)
+
 
 
 @senior_editor_user_required

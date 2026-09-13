@@ -534,3 +534,30 @@ class ShareReviewsForm(forms.Form):
                 label=f"Email for {review.reviewer.full_name()}",
                 initial=review.email_content,
             )
+
+
+class ReviewerPoolMembershipForm(forms.ModelForm):
+    class Meta:
+        model = models.ReviewerPoolMembership
+        fields = (
+            "status",
+            "is_available",
+        )
+        widgets = {
+            "is_available": HTMLSwitchInput(),
+        }
+
+
+class ReviewerPoolMembershipAddForm(forms.ModelForm):
+    class Meta:
+        model = models.ReviewerPoolMembership
+        fields = (
+            "account",
+            "status",
+            "source",
+            "is_available",
+            "notes",
+        )
+        widgets = {
+            "is_available": HTMLSwitchInput(),
+        }
